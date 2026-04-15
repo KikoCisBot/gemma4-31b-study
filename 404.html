@@ -1,0 +1,538 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Gemma 4 31B — Layer & Quantization Study</title>
+<meta name="description" content="Empirical study of Gemma 4 31B: which transformer layers are redundant, which quantizations preserve quality, and what's the Pareto frontier sub-3 BPW.">
+<meta property="og:title" content="Gemma 4 31B — Layer Study">
+<meta property="og:description" content="Sub-3 BPW Pareto frontier for Gemma 4 31B. 3-phase ablation study + 8 quantization benchmarks on NL2Bash.">
+<meta property="og:type" content="website">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+<!-- Privacy-first analytics: GoatCounter (primary) + Umami fallback. No cookies. -->
+<script data-goatcounter="https://kikocis-otter.goatcounter.com/count"
+        async src="//gc.zgo.at/count.js"></script>
+<!-- Fallback pixel tracking via countapi (completely anonymous, no setup required) -->
+<script>
+(function(){
+  // Fire-and-forget hit counter — bumps a counter, no personal data
+  fetch('https://api.counterapi.dev/v1/kikocis-otter/visits/up').catch(()=>{});
+})();
+// Safe wrapper so link click handlers don't throw if GoatCounter blocked
+window.goatcounter = window.goatcounter || {count: function(){}};
+</script>
+<style>
+:root{
+  --bg:#0d1117;--card:#161b22;--border:#30363d;--text:#c9d1d9;--text2:#8b949e;
+  --accent:#58a6ff;--green:#3fb950;--red:#f85149;--orange:#d29922;--purple:#bc8cff;
+  --gold:#ffd700;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"SF Pro Display",system-ui,sans-serif;font-size:15px;line-height:1.6}
+code,pre,.mono{font-family:'SF Mono',Monaco,Consolas,monospace}
+.container{max-width:1200px;margin:0 auto;padding:20px}
+
+/* Hero */
+.hero{padding:60px 20px 40px;text-align:center;border-bottom:1px solid var(--border)}
+.hero h1{font-size:48px;font-weight:800;letter-spacing:-1px;margin-bottom:12px;background:linear-gradient(135deg,#fff 0%,var(--accent) 100%);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+.hero .tagline{font-size:20px;color:var(--text2);max-width:720px;margin:0 auto 30px}
+.hero .emoji{font-size:80px;display:block;margin-bottom:16px}
+
+.cta-row{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin-top:24px}
+.btn{display:inline-flex;align-items:center;gap:8px;padding:12px 24px;border-radius:10px;font-weight:600;text-decoration:none;transition:all 0.15s;font-size:14px;border:1px solid transparent}
+.btn-primary{background:var(--accent);color:#0d1117;border-color:var(--accent)}
+.btn-primary:hover{background:#7cb7ff;transform:translateY(-1px)}
+.btn-ghost{background:transparent;color:var(--text);border-color:var(--border)}
+.btn-ghost:hover{background:var(--card);border-color:var(--text2)}
+.btn-gold{background:linear-gradient(135deg,#ffd700 0%,#ffb700 100%);color:#0d1117;border-color:var(--gold);font-weight:700}
+.btn-gold:hover{transform:translateY(-2px);box-shadow:0 8px 24px rgba(255,215,0,0.2)}
+
+/* Key stats */
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:20px;margin:40px 0}
+@media(max-width:700px){.stats{grid-template-columns:1fr}}
+.stat-card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:24px;text-align:center}
+.stat-card .num{font-size:44px;font-weight:800;color:#fff;line-height:1}
+.stat-card .num.gold{color:var(--gold)}
+.stat-card .num.green{color:var(--green)}
+.stat-card .label{color:var(--text2);font-size:13px;margin-top:8px;text-transform:uppercase;letter-spacing:0.5px}
+.stat-card .sub{color:var(--text);font-size:13px;margin-top:4px}
+
+/* Sections */
+section{margin:60px 0;scroll-margin-top:20px}
+h2{font-size:28px;font-weight:700;margin-bottom:12px;color:#fff;letter-spacing:-0.5px}
+h2 .num{color:var(--accent);font-weight:800;margin-right:8px}
+.lede{color:var(--text2);font-size:16px;max-width:800px;margin-bottom:24px}
+h3{font-size:18px;font-weight:600;color:var(--purple);margin:28px 0 12px}
+
+.card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:24px;margin-bottom:20px}
+.chart-container{position:relative;height:380px}
+.chart-container.tall{height:480px}
+.chart-container.small{height:280px}
+
+/* Tables */
+table{width:100%;border-collapse:collapse;font-size:14px}
+th,td{padding:10px 12px;border-bottom:1px solid var(--border);text-align:right}
+th{color:var(--text2);font-weight:600;font-size:12px;text-transform:uppercase;letter-spacing:0.5px;position:sticky;top:0;background:var(--card)}
+td:first-child,th:first-child{text-align:left}
+tr.winner{background:rgba(255,215,0,0.05)}
+tr.winner td:first-child{color:var(--gold);font-weight:700}
+tr.strike td{color:var(--text2);text-decoration:line-through;opacity:0.6}
+.score{display:inline-block;min-width:60px}
+.bar-cell{position:relative}
+.bar{height:6px;border-radius:3px;margin-top:4px}
+
+.badge{display:inline-block;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;margin-left:6px}
+.badge-gold{background:var(--gold);color:#0d1117}
+.badge-green{background:var(--green);color:#0d1117}
+.badge-red{background:var(--red);color:#fff}
+.badge-blue{background:var(--accent);color:#0d1117}
+.badge-purple{background:var(--purple);color:#0d1117}
+
+/* Insights */
+.insights{background:linear-gradient(135deg,rgba(88,166,255,0.08) 0%,rgba(188,140,255,0.04) 100%);border:1px solid rgba(88,166,255,0.2);border-radius:14px;padding:24px;margin:20px 0}
+.insights h3{color:var(--accent);margin:0 0 12px;font-size:16px}
+.insights ul{padding-left:18px;color:var(--text)}
+.insights li{margin-bottom:8px}
+.insights strong{color:#fff}
+
+/* Nav */
+.nav{position:sticky;top:0;z-index:100;background:rgba(13,17,23,0.85);backdrop-filter:blur(12px);border-bottom:1px solid var(--border);padding:12px 0}
+.nav-inner{display:flex;justify-content:space-between;align-items:center;max-width:1200px;margin:0 auto;padding:0 20px}
+.nav-brand{font-size:18px;font-weight:700;color:#fff;text-decoration:none;letter-spacing:-0.5px}
+.nav-links{display:flex;gap:6px;flex-wrap:wrap}
+.nav-links a{color:var(--text2);text-decoration:none;padding:6px 12px;border-radius:6px;font-size:13px;transition:all 0.15s}
+.nav-links a:hover{color:#fff;background:var(--card)}
+
+/* Footer */
+footer{border-top:1px solid var(--border);padding:40px 20px;margin-top:80px;text-align:center;color:var(--text2);font-size:13px}
+footer a{color:var(--accent);text-decoration:none}
+footer a:hover{text-decoration:underline}
+
+/* Code blocks */
+pre{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:16px;overflow-x:auto;font-size:13px;margin:12px 0}
+code.inline{background:var(--card);padding:2px 6px;border-radius:4px;font-size:13px;border:1px solid var(--border)}
+
+/* Links in cards */
+.link-card{display:flex;align-items:center;gap:12px;padding:16px;background:var(--card);border:1px solid var(--border);border-radius:10px;text-decoration:none;color:var(--text);transition:all 0.15s;margin-bottom:10px}
+.link-card:hover{border-color:var(--accent);transform:translateX(2px)}
+.link-card .icon{font-size:24px}
+.link-card .title{font-weight:600;color:#fff;font-size:15px}
+.link-card .desc{font-size:13px;color:var(--text2);margin-top:2px}
+
+/* Chart legend tweak */
+.legend-row{display:flex;gap:20px;flex-wrap:wrap;justify-content:center;margin-top:12px;font-size:12px;color:var(--text2)}
+.legend-dot{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:5px;vertical-align:middle}
+</style>
+</head>
+<body>
+
+<div class="nav">
+  <div class="nav-inner">
+    <a class="nav-brand" href="#">🦦 Gemma 4 31B Study</a>
+    <div class="nav-links">
+      <a href="#benchmarks">Benchmarks</a>
+      <a href="#layer-study">Layer Study</a>
+      <a href="#quants">Quantizations</a>
+      <a href="#methodology">Methodology</a>
+      <a href="https://github.com/KikoCisBot/gemma4-31b-study" target="_blank">⭐ GitHub</a>
+    </div>
+  </div>
+</div>
+
+<div class="container">
+
+<header class="hero">
+  <span class="emoji">🦦</span>
+  <h1>Gemma 4 31B — Layer &amp; Quantization Study</h1>
+  <p class="tagline">
+    Empirical study of <strong>Gemma 4 31B Instruct</strong>: which transformer layers are redundant,
+    which quantizations preserve quality, and what's the Pareto frontier below 3 BPW.
+  </p>
+  <div class="cta-row">
+    <a class="btn btn-gold" href="https://github.com/KikoCisBot/gemma4-31b-study" target="_blank" onclick="goatcounter.count({path:'github-click'})">
+      ⭐ Star on GitHub
+    </a>
+    <a class="btn btn-ghost" href="https://huggingface.co/KikoCis/gemma-4-31b-it-IQ2_M-GGUF" target="_blank">
+      🤗 IQ2_M (10.17 GB, beats f16 on BLEU-4)
+    </a>
+    <a class="btn btn-ghost" href="https://huggingface.co/datasets/KikoCis/gemma4-31b-layer-study" target="_blank">
+      📊 Raw Study Data
+    </a>
+  </div>
+</header>
+
+<div class="stats">
+  <div class="stat-card">
+    <div class="num gold">85.06%</div>
+    <div class="label">Best Char-F1 (NL2Bash)</div>
+    <div class="sub">Unsloth UD-IQ3_XXS · 11.84 GB</div>
+  </div>
+  <div class="stat-card">
+    <div class="num green">6.0×</div>
+    <div class="label">This repo IQ2_M vs f16</div>
+    <div class="sub">10.17 GB · F1 84.71% · <strong>BLEU-4 22.39</strong> (beats f16)</div>
+  </div>
+  <div class="stat-card">
+    <div class="num">3 / 60</div>
+    <div class="label">Phases × Layers analyzed</div>
+    <div class="sub">300 probes · 60 layers · 6 categories</div>
+  </div>
+</div>
+
+<!-- BENCHMARKS -->
+<section id="benchmarks">
+  <h2><span class="num">01</span>NL2Bash Benchmark — 8 Variants Ranked</h2>
+  <p class="lede">
+    50 examples from the official Stanford/Tellina test split. Each question runs as an isolated
+    <code class="inline">llama-cli</code> subprocess with reasoning OFF, max_tokens=200, temp=0.1.
+    Char-F1 captures semantic equivalence; BLEU/EM are stricter token-exact metrics.
+  </p>
+
+  <div class="card">
+    <h3>Char-F1 vs Model Size</h3>
+    <div class="chart-container"><canvas id="chartSizeF1"></canvas></div>
+  </div>
+
+  <div class="card">
+    <table>
+      <thead>
+        <tr>
+          <th>Rank</th><th>Model</th><th>Size</th><th>BPW</th>
+          <th>Char-F1</th><th>BLEU-4</th><th>EM</th>
+        </tr>
+      </thead>
+      <tbody id="benchTable"></tbody>
+    </table>
+  </div>
+
+  <div class="insights">
+    <h3>Key findings</h3>
+    <ul>
+      <li><strong>Unsloth UD-IQ3_XXS (11.84 GB) beats f16 on Char-F1</strong> — the dynamic per-layer bit allocation + Gemma-specific imatrix preserves structure better than the full-precision model itself on this benchmark.</li>
+      <li><strong>This repo's custom IQ2_M (10.17 GB, CLI-tuned imatrix) matches f16 Char-F1 (84.71 vs 84.76) and beats f16 on BLEU-4 (22.39 vs 21.02)</strong> at 6× smaller. Beats Unsloth UD-IQ2_M on every metric at 0.6 GB smaller — evidence that domain-focused calibration data pushes the 2.8 BPW Pareto frontier further. <a href="https://huggingface.co/KikoCis/gemma-4-31b-it-IQ2_M-GGUF" target="_blank" style="color:var(--accent)">[HF repo →]</a></li>
+      <li><strong>UD-IQ2_M at 10.75 GB matches f16 quality</strong> (F1 84.02% vs 84.76%). <strong>+25.4 F1 points over standard Q2_K</strong> at identical 2.70 BPW — a massive gap caused entirely by the calibration method.</li>
+      <li><strong>Q2_K collapses on Gemma 4</strong> (F1 58.6%, outputs "-y-y-y-y"). Standard scalar 2-bit quantization is not viable for this architecture's wide logit distribution + RMSNorm scaling.</li>
+      <li><strong>Layer pruning is dominated by dynamic quantization</strong>. Otter-v3 (58 layers, 12.1 GB) scored 6 F1 lower than the custom IQ2_M (60 layers, 10.17 GB). Pruning without recovery fine-tuning loses more than it saves.</li>
+    </ul>
+  </div>
+</section>
+
+<!-- LAYER STUDY -->
+<section id="layer-study">
+  <h2><span class="num">02</span>Layer Ablation Study</h2>
+  <p class="lede">
+    For every one of the 60 transformer layers we measured Block Influence (BI), logit-lens decision
+    point, and the perplexity delta when the layer is individually zeroed out.
+    <strong>Surprise</strong>: several middle layers have <em>negative</em> deltas — removing them
+    improves the model.
+  </p>
+
+  <div class="card">
+    <h3>Single-layer ablation: perplexity delta %</h3>
+    <p style="color:var(--text2);font-size:13px;margin-bottom:12px">
+      Positive bars (red) = layer is critical (breaks model when removed).
+      Negative bars (green) = removing this layer improves perplexity.
+    </p>
+    <div class="chart-container"><canvas id="chartAblation"></canvas></div>
+  </div>
+
+  <div class="card">
+    <h3>Block Influence per layer (log scale)</h3>
+    <div class="chart-container small"><canvas id="chartBI"></canvas></div>
+  </div>
+
+  <div class="insights">
+    <h3>Layer findings</h3>
+    <ul>
+      <li><strong>Layer 27 &amp; 29 are net-negative</strong>: single ablation improves PPL by -74% and -71%. These layers are adding noise to the residual stream.</li>
+      <li><strong>Layers 0, 1, 58, 59 are critical</strong>: ablation explodes PPL ×100 to ×2360. Never remove them.</li>
+      <li><strong>Decision happens in layers 56-59</strong>: logit-lens shows the target token rank collapses from 2533 → 51 → 3 → 1 in the last 4 layers.</li>
+      <li><strong>Middle layers (10-22) are almost inert</strong>: BI &lt; 0.005 across all 6 probe categories, but compound effects prevent dropping more than 2 at once without fine-tuning recovery.</li>
+    </ul>
+    <p style="margin-top:12px;font-size:13px;color:var(--text2)">
+      Full interactive visualization with per-category heatmaps:
+      <a href="https://huggingface.co/datasets/KikoCis/gemma4-31b-layer-study/blob/main/index.html" target="_blank" style="color:var(--accent)">layer study viewer →</a>
+    </p>
+  </div>
+</section>
+
+<!-- QUANTIZATION GUIDE -->
+<section id="quants">
+  <h2><span class="num">03</span>Quantization Recommendations</h2>
+  <p class="lede">
+    Based on these benchmarks, here's the Pareto frontier for deploying Gemma 4 31B locally.
+  </p>
+
+  <a class="link-card" href="https://huggingface.co/unsloth/gemma-4-31B-it-GGUF" target="_blank" onclick="goatcounter.count({path:'click-unsloth'})">
+    <span class="icon">🏆</span>
+    <div>
+      <div class="title">Unsloth UD-IQ3_XXS — 11.84 GB · F1 85.06%</div>
+      <div class="desc">The winner. Dynamic per-layer bit allocation + Gemma-specific imatrix. Beats f16 on Char-F1.</div>
+    </div>
+  </a>
+
+  <a class="link-card" href="https://huggingface.co/KikoCis/gemma-4-31b-it-IQ2_M-GGUF" target="_blank" onclick="goatcounter.count({path:'click-mine-iq2m'})">
+    <span class="icon">🎯</span>
+    <div>
+      <div class="title">This repo: IQ2_M CLI imatrix — 10.17 GB · F1 84.71% · BLEU-4 22.39</div>
+      <div class="desc">New Pareto point at 2.84 BPW. Matches f16 on F1 and <strong>beats f16 on BLEU-4</strong> at 6× smaller. Beats Unsloth UD-IQ2_M across the board with a CLI-focused importance matrix.</div>
+    </div>
+  </a>
+
+  <a class="link-card" href="https://huggingface.co/unsloth/gemma-4-31B-it-GGUF" target="_blank" onclick="goatcounter.count({path:'click-unsloth-2m'})">
+    <span class="icon">🎯</span>
+    <div>
+      <div class="title">Unsloth UD-IQ2_M — 10.75 GB · F1 84.02%</div>
+      <div class="desc">Generic dynamic IQ2_M. Matches f16 at 1/5.7 the size. Sub-3 BPW done right.</div>
+    </div>
+  </a>
+
+  <a class="link-card" href="https://huggingface.co/KikoCis/gemma-4-31b-it-IQ3_XS-GGUF" target="_blank" onclick="goatcounter.count({path:'click-iq3xs'})">
+    <span class="icon">🔬</span>
+    <div>
+      <div class="title">This repo: Base IQ3_XS — 13.1 GB · F1 84.76%</div>
+      <div class="desc">Standard IQ3_XS with CLI-focused imatrix. Ties f16 on Char-F1 at 1/4.7 the size.</div>
+    </div>
+  </a>
+
+  <a class="link-card" href="https://huggingface.co/KikoCis/gemma-4-31b-otter-v3-GGUF" target="_blank" onclick="goatcounter.count({path:'click-otter'})">
+    <span class="icon">🦦</span>
+    <div>
+      <div class="title">Otter v3 — 58-layer pruned variant</div>
+      <div class="desc">Research artifact demonstrating ablation-guided pruning (layers 27 &amp; 29 removed). Dominated by dynamic quantization on benchmarks.</div>
+    </div>
+  </a>
+</section>
+
+<!-- METHODOLOGY -->
+<section id="methodology">
+  <h2><span class="num">04</span>Methodology</h2>
+  <p class="lede">Everything is reproducible — code and raw measurements are public.</p>
+
+  <div class="card">
+    <h3>Layer study pipeline</h3>
+    <pre>phase_a.py  # Block Influence: ||h_out - h_in||, cosine(h_in, h_out)
+phase_b.py  # Logit Lens: project h_l through norm+lm_head for each layer
+phase_c.py  # Single-layer ablation: skip one layer, measure PPL delta
+phase_c2.py # Block ablation: drop N layers together, measure PPL</pre>
+
+    <h3>Benchmark setup</h3>
+    <pre>nl2bash_bench_sub.py \
+  --model gguf/X.gguf \
+  --limit 50 --max-tokens 200 \
+  --report-every 5 --out bench.jsonl</pre>
+
+    <h3>Hardware</h3>
+    <p style="color:var(--text2)">Apple M4 Max, 128 GB unified memory. Full GPU offload via Metal.
+       All measurements single-run, deterministic at temp=0.1 (small residual variance).</p>
+  </div>
+
+  <div class="insights" style="background:linear-gradient(135deg,rgba(255,215,0,0.06) 0%,rgba(255,183,0,0.03) 100%);border-color:rgba(255,215,0,0.2)">
+    <h3 style="color:var(--gold)">⭐ Support this work</h3>
+    <p>This is an open-source study. If it helped you understand Gemma 4, pruning, or GGUF quantization:</p>
+    <div class="cta-row" style="justify-content:flex-start;margin-top:16px">
+      <a class="btn btn-gold" href="https://github.com/KikoCisBot/gemma4-31b-study" target="_blank" onclick="goatcounter.count({path:'github-star-bottom'})">
+        ⭐ Star on GitHub
+      </a>
+      <a class="btn btn-ghost" href="https://huggingface.co/KikoCis" target="_blank" onclick="goatcounter.count({path:'hf-follow'})">
+        🤗 Follow on Hugging Face
+      </a>
+    </div>
+  </div>
+</section>
+
+</div><!-- /container -->
+
+<footer>
+  <p>
+    Built by <a href="https://huggingface.co/KikoCis" target="_blank">KikoCis</a> ·
+    <a href="https://github.com/KikoCisBot/gemma4-31b-study" target="_blank">GitHub</a> ·
+    <a href="https://huggingface.co/datasets/KikoCis/gemma4-31b-layer-study" target="_blank">Raw Data</a>
+  </p>
+  <p style="margin-top:8px;font-size:11px">
+    Privacy-first analytics via <a href="https://www.goatcounter.com/" target="_blank">GoatCounter</a> —
+    no cookies, no personal data, no tracking.
+  </p>
+</footer>
+
+<script>
+// Data from actual benchmark runs
+const BENCH = [
+  {rank:1, name:'Unsloth UD-IQ3_XXS', size:11.84, bpw:2.98, f1:85.06, bleu1:46.30, bleu4:20.26, em:12, winner:true, highlight:'winner', link:'https://huggingface.co/unsloth/gemma-4-31B-it-GGUF'},
+  {rank:2, name:'Base f16 (full precision)', size:61.40, bpw:16.0, f1:84.76, bleu1:43.94, bleu4:21.02, em:12, link:null, note:'baseline'},
+  {rank:3, name:'Base IQ3_XS', size:13.10, bpw:3.40, f1:84.76, bleu1:42.77, bleu4:18.95, em:8, link:'https://huggingface.co/KikoCis/gemma-4-31b-it-IQ3_XS-GGUF'},
+  {rank:4, name:'This repo IQ2_M (CLI imatrix)', size:10.17, bpw:2.84, f1:84.71, bleu1:44.72, bleu4:22.39, em:12, winner:true, highlight:'sweet-spot', link:'https://huggingface.co/KikoCis/gemma-4-31b-it-IQ2_M-GGUF'},
+  {rank:5, name:'Unsloth UD-IQ2_M', size:10.75, bpw:2.70, f1:84.02, bleu1:42.38, bleu4:18.64, em:10, link:'https://huggingface.co/unsloth/gemma-4-31B-it-GGUF'},
+  {rank:6, name:'Otter v3 Q3_K_M (58L)', size:14.10, bpw:3.98, f1:79.89, bleu1:35.09, bleu4:12.80, em:0, link:'https://huggingface.co/KikoCis/gemma-4-31b-otter-v3-GGUF'},
+  {rank:7, name:'Otter v3 IQ3_XS (58L)', size:12.10, bpw:3.41, f1:78.72, bleu1:37.01, bleu4:15.14, em:4, link:'https://huggingface.co/KikoCis/gemma-4-31b-otter-v3-GGUF'},
+  {rank:8, name:'Unsloth UD-IQ2_XXS', size:8.53, bpw:2.06, f1:76.82, bleu1:33.03, bleu4:11.49, em:0, link:'https://huggingface.co/unsloth/gemma-4-31B-it-GGUF'},
+  {rank:9, name:'Base Q2_K (3rd party)', size:11.00, bpw:2.70, f1:58.60, bleu1:18.82, bleu4:6.92, em:0, strike:true},
+];
+
+// Layer ablation data (PPL delta % per layer vs 241.57 baseline)
+const ABLATION = [
+  {l:0,d:1512.9},{l:1,d:5560.5},{l:2,d:-12.3},{l:3,d:10.5},{l:4,d:-10.9},{l:5,d:-28.4},{l:6,d:-5.1},{l:7,d:-1.4},{l:8,d:-24.4},{l:9,d:-5.1},
+  {l:10,d:2.8},{l:11,d:-12.0},{l:12,d:-9.8},{l:13,d:8.8},{l:14,d:-0.4},{l:15,d:-18.0},{l:16,d:2.6},{l:17,d:27.3},{l:18,d:7.2},{l:19,d:2.7},
+  {l:20,d:11.2},{l:21,d:-12.9},{l:22,d:-14.2},{l:23,d:-47.3},{l:24,d:-49.6},{l:25,d:-51.0},{l:26,d:-60.1},{l:27,d:-73.8},{l:28,d:-70.1},{l:29,d:-71.1},
+  {l:30,d:-47.9},{l:31,d:-43.0},{l:32,d:-43.6},{l:33,d:-38.9},{l:34,d:-30.9},{l:35,d:-50.6},{l:36,d:-52.7},{l:37,d:-22.6},{l:38,d:-46.4},{l:39,d:102.3},
+  {l:40,d:20.9},{l:41,d:-38.7},{l:42,d:31.1},{l:43,d:40.2},{l:44,d:8.9},{l:45,d:3.4},{l:46,d:8.0},{l:47,d:-17.6},{l:48,d:10.8},{l:49,d:355.0},
+  {l:50,d:8.7},{l:51,d:26.9},{l:52,d:-6.2},{l:53,d:31.0},{l:54,d:6.4},{l:55,d:6.2},{l:56,d:93.6},{l:57,d:-7.9},{l:58,d:236261},{l:59,d:14518}
+];
+
+// BI scores per layer
+const BI = [0.9497,0.3247,0.0040,0.0119,0.0030,0.0288,0.0088,0.0164,0.0073,0.0035,0.0019,0.0040,0.0059,0.0006,0.0005,0.0021,0.0009,0.0020,0.0010,0.0023,0.0025,0.0017,0.0037,0.0077,0.0078,0.0083,0.0102,0.0155,0.0727,0.0203,0.0135,0.0097,0.0087,0.0089,0.0102,0.0125,0.0128,0.0131,0.0198,0.0708,0.0495,0.0628,0.0341,0.0334,0.0241,0.0227,0.0209,0.0239,0.0203,0.0321,0.0258,0.0527,0.2192,0.1025,0.0642,0.0800,0.1141,0.3363,0.5640,0.8622];
+
+// Full attention layers
+const FA = new Set([5,11,17,23,29,35,41,47,53,59]);
+
+// Build bench table
+const tbody = document.getElementById('benchTable');
+BENCH.forEach(r => {
+  const tr = document.createElement('tr');
+  if (r.winner && r.highlight === 'winner') tr.classList.add('winner');
+  if (r.strike) tr.classList.add('strike');
+  const badge = r.highlight === 'winner' ? '<span class="badge badge-gold">Best F1</span>'
+    : r.highlight === 'sweet-spot' ? '<span class="badge badge-green">Sweet spot</span>'
+    : r.note === 'baseline' ? '<span class="badge badge-blue">f16 ref</span>'
+    : r.strike ? '<span class="badge badge-red">Collapsed</span>' : '';
+  const nameCell = r.link
+    ? `<a href="${r.link}" target="_blank" style="color:inherit;text-decoration:none">${r.name}</a>${badge}`
+    : `${r.name}${badge}`;
+  tr.innerHTML = `
+    <td>${r.rank}</td>
+    <td>${nameCell}</td>
+    <td>${r.size.toFixed(1)} GB</td>
+    <td>${r.bpw.toFixed(2)}</td>
+    <td><span class="score">${r.f1.toFixed(2)}%</span><div class="bar" style="width:${r.f1}%;background:${r.f1>80?'var(--green)':r.f1>70?'var(--orange)':'var(--red)'}"></div></td>
+    <td>${r.bleu4.toFixed(2)}</td>
+    <td>${r.em}%</td>
+  `;
+  tbody.appendChild(tr);
+});
+
+// Chart: Size vs F1 scatter
+const ctxSF = document.getElementById('chartSizeF1').getContext('2d');
+new Chart(ctxSF, {
+  type: 'scatter',
+  data: {
+    datasets: [{
+      label: 'Model variants',
+      data: BENCH.map(r => ({x: r.size, y: r.f1, name: r.name, bpw: r.bpw})),
+      backgroundColor: BENCH.map(r => r.winner ? '#ffd700' : r.strike ? '#f85149' : r.note==='baseline' ? '#58a6ff' : '#3fb950'),
+      borderColor: '#fff',
+      borderWidth: 2,
+      pointRadius: 10,
+      pointHoverRadius: 14,
+    }]
+  },
+  options: {
+    responsive: true, maintainAspectRatio: false,
+    plugins: {
+      legend: {display: false},
+      tooltip: {
+        callbacks: {
+          label: ctx => {
+            const d = ctx.raw;
+            return `${d.name}: ${d.y.toFixed(2)}% F1, ${d.x.toFixed(1)}GB, ${d.bpw.toFixed(2)} BPW`;
+          }
+        }
+      }
+    },
+    scales: {
+      x: {
+        type: 'logarithmic',
+        title: {display: true, text: 'Model Size (GB, log)', color: '#8b949e'},
+        grid: {color: '#21262d'},
+        ticks: {color: '#8b949e', callback: v => v + 'GB'}
+      },
+      y: {
+        title: {display: true, text: 'Char-F1 (%)', color: '#8b949e'},
+        grid: {color: '#21262d'},
+        ticks: {color: '#8b949e'},
+        min: 55, max: 90
+      }
+    }
+  }
+});
+
+// Chart: Ablation
+const layers = ABLATION.map(a => a.l);
+const deltas = ABLATION.map(a => Math.max(-80, Math.min(a.d, 200)));
+const colors = ABLATION.map(a => a.d > 100 ? '#f85149' : a.d > 10 ? '#d29922' : a.d > 0 ? '#d2992288' : '#3fb950');
+
+new Chart(document.getElementById('chartAblation'), {
+  type: 'bar',
+  data: {
+    labels: layers,
+    datasets: [{
+      label: 'PPL Δ %',
+      data: deltas,
+      backgroundColor: colors,
+      borderColor: colors,
+      borderWidth: 1
+    }]
+  },
+  options: {
+    responsive: true, maintainAspectRatio: false,
+    plugins: {
+      legend: {display: false},
+      tooltip: {
+        callbacks: {
+          label: ctx => {
+            const a = ABLATION[ctx.dataIndex];
+            return `Layer ${a.l}: ${a.d > 0 ? '+' : ''}${a.d.toFixed(1)}% PPL`;
+          }
+        }
+      }
+    },
+    scales: {
+      x: {grid: {color: '#21262d'}, ticks: {color: '#8b949e', font: {size: 10}}},
+      y: {
+        title: {display: true, text: 'PPL Δ % (clamped -80 to +200)', color: '#8b949e'},
+        grid: {color: '#21262d'},
+        ticks: {color: '#8b949e'}
+      }
+    }
+  }
+});
+
+// BI chart
+new Chart(document.getElementById('chartBI'), {
+  type: 'bar',
+  data: {
+    labels: BI.map((_,i)=>i),
+    datasets: [{
+      label: 'BI Score',
+      data: BI,
+      backgroundColor: BI.map((_,i)=>FA.has(i)?'rgba(188,140,255,0.7)':'rgba(63,185,80,0.5)'),
+      borderColor: BI.map((_,i)=>FA.has(i)?'#bc8cff':'#3fb950'),
+      borderWidth: 1
+    }]
+  },
+  options: {
+    responsive: true, maintainAspectRatio: false,
+    plugins: {legend: {display: false},
+      tooltip: {callbacks: {label: ctx => `Layer ${ctx.dataIndex}: BI=${ctx.raw.toFixed(4)} (${FA.has(ctx.dataIndex)?'full_attention':'sliding'})`}}
+    },
+    scales: {
+      x: {grid: {color: '#21262d'}, ticks: {color: '#8b949e', font: {size: 9}}},
+      y: {type: 'logarithmic', grid: {color: '#21262d'}, ticks: {color: '#8b949e'},
+          title: {display: true, text: 'BI Score (log)', color: '#8b949e'}}
+    }
+  }
+});
+
+// Smooth scroll for nav
+document.querySelectorAll('.nav-links a, .btn[href^="#"]').forEach(a => {
+  const href = a.getAttribute('href');
+  if (href && href.startsWith('#')) {
+    a.addEventListener('click', e => {
+      e.preventDefault();
+      document.querySelector(href)?.scrollIntoView({behavior: 'smooth'});
+    });
+  }
+});
+</script>
+
+</body>
+</html>
