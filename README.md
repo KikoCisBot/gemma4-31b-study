@@ -18,6 +18,18 @@ Empirical study of Google's **Gemma 4 31B Instruct**: which transformer layers a
 
 Matches f16 on Char-F1 and **beats f16 on BLEU-4** at **6× smaller**. Beats Unsloth UD-IQ2_M on every metric at 0.6 GB smaller — CLI-focused imatrix calibration pushes the sub-3-BPW Pareto frontier further than Unsloth's generic Dynamic 2.0.
 
+## Code &amp; Agentic benchmarks — IQ2_M (first public evaluation of Gemma 4 31B on these)
+
+Google officially reports only **LiveCodeBench v6 = 80%** and **Tau2 = 76.9%** for Gemma 4 31B IT. HumanEval+/MBPP+/BFCL scores are not published. This appears to be the first public evaluation of Gemma 4 31B on these benchmarks — done on the custom IQ2_M quantization (not f16).
+
+| Benchmark | Score | Passed / Total | Top failure classes |
+|-----------|------:|---------------:|--------------------|
+| HumanEval+ | **88.41%** pass@1 | 145 / 164 | wrong_output (15), missing_import (3) |
+| MBPP+ | **82.01%** pass@1 | 310 / 378 | wrong_output (35), missing_import (28) |
+| BFCL v3 simple | **92.25%** accuracy | 369 / 400 | args_mismatch (30), wrong_name (1) |
+
+118 failure cases saved in [`benchmarks/failures_iq2m.jsonl`](lab/gemma-e2b-cli/benchmarks/failures_iq2m.jsonl) — seed for domain-mixed imatrix calibration and failure-driven LoRA training (next phase).
+
 ## Full benchmark (NL2Bash, 50 examples, Stanford/Tellina)
 
 | Rank | Model | Size | BPW | Char-F1 | BLEU-4 |
