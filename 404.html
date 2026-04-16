@@ -130,7 +130,8 @@ code.inline{background:var(--card);padding:2px 6px;border-radius:4px;font-size:1
   <div class="nav-inner">
     <a class="nav-brand" href="#">🦦 Gemma 4 31B Study</a>
     <div class="nav-links">
-      <a href="#benchmarks">Benchmarks</a>
+      <a href="#benchmarks">NL2Bash</a>
+      <a href="#code-agentic">Code &amp; Agentic</a>
       <a href="#layer-study">Layer Study</a>
       <a href="#quants">Quantizations</a>
       <a href="#methodology">Methodology</a>
@@ -173,9 +174,9 @@ code.inline{background:var(--card);padding:2px 6px;border-radius:4px;font-size:1
     <div class="sub">10.17 GB · F1 84.71% · <strong>BLEU-4 22.39</strong> (beats f16)</div>
   </div>
   <div class="stat-card">
-    <div class="num">3 / 60</div>
-    <div class="label">Phases × Layers analyzed</div>
-    <div class="sub">300 probes · 60 layers · 6 categories</div>
+    <div class="num gold">88.4 / 82.0 / 92.3</div>
+    <div class="label">HumanEval+ / MBPP+ / BFCL</div>
+    <div class="sub">IQ2_M on code + agentic — first public eval</div>
   </div>
 </div>
 
@@ -217,9 +218,77 @@ code.inline{background:var(--card);padding:2px 6px;border-radius:4px;font-size:1
   </div>
 </section>
 
+<!-- CODE & AGENTIC BENCHMARKS -->
+<section id="code-agentic">
+  <h2><span class="num">02</span>Code &amp; Agentic Benchmarks (IQ2_M, 10.17 GB)</h2>
+  <p class="lede">
+    Beyond CLI-style NL2Bash, we tested the custom IQ2_M on three code and agentic benchmarks.
+    The result: a 10 GB quantized 31B matches or beats many f16 models in its tier on
+    coding and function-calling tasks — using the same weights that win NL2Bash.
+  </p>
+
+  <div class="card">
+    <h3>Results summary</h3>
+    <table>
+      <thead>
+        <tr>
+          <th>Benchmark</th>
+          <th>Split</th>
+          <th>Score</th>
+          <th>Passed / Total</th>
+          <th>Failure classes (top)</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>HumanEval+</strong></td>
+          <td>Full (164)</td>
+          <td class="gold"><strong>88.41%</strong> pass@1</td>
+          <td>145 / 164</td>
+          <td>wrong_output (15), missing_import (3)</td>
+        </tr>
+        <tr>
+          <td><strong>MBPP+</strong></td>
+          <td>Full (378)</td>
+          <td class="gold"><strong>82.01%</strong> pass@1</td>
+          <td>310 / 378</td>
+          <td>wrong_output (35), missing_import (28)</td>
+        </tr>
+        <tr>
+          <td><strong>BFCL v3 simple</strong></td>
+          <td>Full (400)</td>
+          <td class="gold"><strong>92.25%</strong> accuracy</td>
+          <td>369 / 400</td>
+          <td>args_mismatch (30), wrong_name (1)</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="insights">
+    <h3>What it means</h3>
+    <ul>
+      <li><strong>88.4% HumanEval+ at 2.84 BPW</strong> is strong for a 10 GB quantized model. Only 19 of 164 problems failed, almost all from subtle logic (wrong_output: off-by-one, edge case) — not catastrophic cuantización damage.</li>
+      <li><strong>92.25% BFCL simple</strong> (single function-call) shows the quantization preserves function-signature comprehension and argument extraction. Only 30 of 400 had argument mismatches and just 1 picked the wrong function name.</li>
+      <li><strong>MBPP+ weak spot</strong>: 28 of 68 failures (41%) are <code class="inline">missing_import_or_name</code> — the model writes code using <code class="inline">math.sqrt</code> or <code class="inline">re.match</code> without the import statement. Fixable by domain-specific calibration.</li>
+      <li><strong>Context for public numbers</strong>: Google reports Gemma 4 31B f16 at <strong>80.0%</strong> on LiveCodeBench v6 and <strong>76.9%</strong> on Tau2. HumanEval+/MBPP+/BFCL scores for Gemma 4 31B are not officially published — this appears to be the first public evaluation on these benchmarks.</li>
+    </ul>
+  </div>
+
+  <div class="insights" style="background:linear-gradient(135deg,rgba(88,166,255,0.06) 0%,rgba(88,166,255,0.03) 100%);border-color:rgba(88,166,255,0.2)">
+    <h3 style="color:var(--accent)">Next step — failure-driven training</h3>
+    <p>
+      The 118 failure cases are the seed of a <strong>domain-mixed importance matrix</strong> plus a
+      <strong>LoftQ-style LoRA delta</strong> trained on what the model gets wrong. Goal: preserve or
+      beat f16 on these benchmarks with a smaller footprint. Full plan and anti-overfit strategy
+      (SWE-bench + LiveCodeBench validation) in the <a href="https://github.com/KikoCisBot/gemma4-31b-study" target="_blank" style="color:var(--accent)">study repo</a>.
+    </p>
+  </div>
+</section>
+
 <!-- LAYER STUDY -->
 <section id="layer-study">
-  <h2><span class="num">02</span>Layer Ablation Study</h2>
+  <h2><span class="num">03</span>Layer Ablation Study</h2>
   <p class="lede">
     For every one of the 60 transformer layers we measured Block Influence (BI), logit-lens decision
     point, and the perplexity delta when the layer is individually zeroed out.
@@ -258,7 +327,7 @@ code.inline{background:var(--card);padding:2px 6px;border-radius:4px;font-size:1
 
 <!-- QUANTIZATION GUIDE -->
 <section id="quants">
-  <h2><span class="num">03</span>Quantization Recommendations</h2>
+  <h2><span class="num">04</span>Quantization Recommendations</h2>
   <p class="lede">
     Based on these benchmarks, here's the Pareto frontier for deploying Gemma 4 31B locally.
   </p>
@@ -306,7 +375,7 @@ code.inline{background:var(--card);padding:2px 6px;border-radius:4px;font-size:1
 
 <!-- METHODOLOGY -->
 <section id="methodology">
-  <h2><span class="num">04</span>Methodology</h2>
+  <h2><span class="num">05</span>Methodology</h2>
   <p class="lede">Everything is reproducible — code and raw measurements are public.</p>
 
   <div class="card">
