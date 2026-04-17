@@ -131,7 +131,7 @@ table.heatmap th,table.heatmap td{padding:1px 3px;text-align:center;border:1px s
 <!-- SECTION 3: QUANTIZATION IMPACT -->
 <section id="quantization-impact">
   <h2><span class="num">3</span>Why Quantization Breaks Code but Preserves Tool-Calling</h2>
-  <p>At 1.75 BPW (IQ1_M), each weight is represented by ~1.75 bits. The quantization error is distributed across all dimensions uniformly. But the <em>impact</em> of that error depends on whether the corrupted dimensions are shared (low impact &mdash; redundancy absorbs it) or specialized (high impact &mdash; no fallback).</p>
+  <p>At 1.75 BPW (IQ1_M), each weight is represented by ~1.75 bits. Standard post-training quantization methods <a href="#ref-gptq">[1]</a> distribute rounding error uniformly across all dimensions. Activation-aware methods like AWQ <a href="#ref-awq">[2]</a> and SmoothQuant <a href="#ref-smoothquant">[15]</a> rescale to reduce outlier sensitivity, and importance-matrix calibration (as used in llama.cpp) approximates the GPTQ Hessian. But the <em>impact</em> of quantization error depends on whether the corrupted dimensions are shared (low impact &mdash; redundancy absorbs it) or specialized (high impact &mdash; no fallback).</p>
 
   <table>
     <tr><th>Model</th><th>Size</th><th>HumanEval+</th><th>MBPP+</th><th>BFCL v3</th><th>NL2Bash F1</th></tr>
@@ -148,14 +148,14 @@ table.heatmap th,table.heatmap td{padding:1px 3px;text-align:center;border:1px s
   </div>
 
   <div class="finding">
-    <strong>Finding 3.</strong> The practical implication: to quantize below 2 BPW without losing code, you must <strong>protect the specialization boundary (layers 18&ndash;24)</strong> with higher bit budgets. A uniform bit allocation treats shared and specialized dimensions equally &mdash; which is provably suboptimal given the phase transition we observe.
+    <strong>Finding 3.</strong> The practical implication: to quantize below 2 BPW without losing code, you must <strong>protect the specialization boundary (layers 18&ndash;24)</strong> with higher bit budgets. A uniform bit allocation treats shared and specialized dimensions equally &mdash; which is provably suboptimal given the phase transition we observe. Sparse outlier methods like SpQR <a href="#ref-spqr">[4]</a> and SqueezeLLM <a href="#ref-squeezellm">[3]</a> partially address this by preserving high-magnitude weights, but they lack the task-specific dimension targeting our analysis enables. Post-quantization recovery via LoRA <a href="#ref-loftq">[8]</a> <a href="#ref-pissa">[9]</a> can restore some capacity, but standard LoRA training does not preferentially target the specialized dimensions &mdash; motivating our proposed Activation-Targeted LoRA (AT-LoRA) approach.
   </div>
 </section>
 
 <!-- SECTION 4: CROSS-MODEL -->
 <section id="cross-model">
   <h2><span class="num">4</span>Cross-Model, Cross-Architecture Comparison</h2>
-  <p>First public HumanEval+/MBPP+/BFCL evaluation of both Gemma 4 31B and Qwen3.6-35B-A3B quantizations.</p>
+  <p>First public HumanEval+ <a href="#ref-evalplus">[20]</a> / MBPP+ / BFCL <a href="#ref-bfcl">[21]</a> evaluation of both Gemma 4 31B <a href="#ref-gemma4">[18]</a> and Qwen3.6-35B-A3B <a href="#ref-qwen36">[19]</a> quantizations.</p>
 
   <div class="card">
     <h3>Recommendation by use case</h3>
@@ -207,7 +207,7 @@ table.heatmap th,table.heatmap td{padding:1px 3px;text-align:center;border:1px s
   </div>
 
   <div class="finding">
-    <strong>Finding 4.</strong> Dense and MoE architectures encode domain knowledge through orthogonal mechanisms &mdash; dimensional selectivity vs expert routing &mdash; but both create <strong>isolated specialization that is vulnerable to uniform quantization</strong>. The optimal compression strategy differs: for dense models, protect the specialization boundary layers with higher bit budgets; for MoE, protect the router and shared expert, then quantize domain experts aggressively. Our BFCL results confirm this: Qwen3.6 MoE at 11 GB achieves 94.75% (expert isolation provides natural redundancy), while Gemma 4 dense at 10.4 GB achieves 88.41% HumanEval+ (specialized dimensions preserved at 2.84 BPW).
+    <strong>Finding 4.</strong> Dense and MoE architectures encode domain knowledge through orthogonal mechanisms &mdash; dimensional selectivity vs expert routing &mdash; but both create <strong>isolated specialization that is vulnerable to uniform quantization</strong> <a href="#ref-gptq">[1]</a> <a href="#ref-omniquant">[17]</a>. The optimal compression strategy differs: for dense models, protect the specialization boundary layers with higher bit budgets; for MoE, protect the router and shared expert, then quantize domain experts aggressively. Unsloth Dynamic 2.0 <a href="#ref-unsloth">[22]</a> applies per-layer adaptive allocation that partially captures this, but without the task-specific dimension information our analysis provides. Our BFCL results confirm this: Qwen3.6 <a href="#ref-qwen36">[19]</a> MoE at 11 GB achieves 94.75% (expert isolation provides natural redundancy), while Gemma 4 <a href="#ref-gemma4">[18]</a> dense at 10.4 GB achieves 88.41% HumanEval+ <a href="#ref-evalplus">[20]</a> (specialized dimensions preserved at 2.84 BPW).
   </div>
 
   <div class="card">
@@ -257,6 +257,37 @@ Dims 0-17 survive = BFCL lives     Experts corrupted = graceful degradation
     <p>HumanEval+ (164 problems, pass@1), MBPP+ (378 problems, pass@1), BFCL v3 simple (400 function-call problems, exact-match accuracy), NL2Bash (50 examples, Char-F1). All via llama-cli subprocess, reasoning off, temp 0.1, ctx 4096.</p>
     <h3>Hardware</h3>
     <p>Apple M4 Max, 128 GB unified memory. Full GPU offload via Metal.</p>
+  </div>
+</section>
+
+<!-- REFERENCES -->
+<section id="references">
+  <h2><span class="num">8</span>References</h2>
+  <div class="card" style="font-size:13px;line-height:1.8">
+    <ol style="padding-left:20px">
+      <li id="ref-gptq"><strong>Frantar, E., et al.</strong> &ldquo;GPTQ: Accurate Post-Training Quantization for Generative Pre-trained Transformers.&rdquo; <em>ICLR 2023.</em> <a href="https://arxiv.org/abs/2210.17323" target="_blank">arXiv:2210.17323</a></li>
+      <li id="ref-awq"><strong>Lin, J., et al.</strong> &ldquo;AWQ: Activation-Aware Weight Quantization for LLM Compression and Acceleration.&rdquo; <em>MLSys 2024.</em> <a href="https://arxiv.org/abs/2306.00978" target="_blank">arXiv:2306.00978</a></li>
+      <li id="ref-squeezellm"><strong>Kim, S., et al.</strong> &ldquo;SqueezeLLM: Dense-and-Sparse Quantization.&rdquo; <em>ICML 2024.</em> <a href="https://arxiv.org/abs/2306.07629" target="_blank">arXiv:2306.07629</a></li>
+      <li id="ref-spqr"><strong>Dettmers, T., et al.</strong> &ldquo;SpQR: A Sparse-Quantized Representation for Near-Lossless LLM Weight Compression.&rdquo; <em>ICLR 2024.</em> <a href="https://arxiv.org/abs/2306.03078" target="_blank">arXiv:2306.03078</a></li>
+      <li id="ref-quip"><strong>Chee, J., et al.</strong> &ldquo;QuIP: 2-Bit Quantization of Large Language Models With Guarantees.&rdquo; <em>NeurIPS 2023.</em> <a href="https://arxiv.org/abs/2307.13304" target="_blank">arXiv:2307.13304</a></li>
+      <li id="ref-quipsharp"><strong>Tseng, A., et al.</strong> &ldquo;QuIP#: Even Better LLM Quantization with Hadamard Incoherence and Lattice Codebooks.&rdquo; <em>ICML 2024.</em> <a href="https://arxiv.org/abs/2402.04396" target="_blank">arXiv:2402.04396</a></li>
+      <li id="ref-qtip"><strong>Tseng, A., et al.</strong> &ldquo;QTIP: Quantization with Trellises and Incoherence Processing.&rdquo; <em>NeurIPS 2024.</em> <a href="https://arxiv.org/abs/2406.11235" target="_blank">arXiv:2406.11235</a></li>
+      <li id="ref-loftq"><strong>Li, Y., et al.</strong> &ldquo;LoftQ: LoRA-Fine-Tuning-Aware Quantization for Large Language Models.&rdquo; <em>ICLR 2024.</em> <a href="https://arxiv.org/abs/2310.08659" target="_blank">arXiv:2310.08659</a></li>
+      <li id="ref-pissa"><strong>Meng, F., et al.</strong> &ldquo;PiSSA: Principal Singular Values and Singular Vectors Adaptation of Large Language Models.&rdquo; <em>NeurIPS 2024 Spotlight.</em> <a href="https://arxiv.org/abs/2404.02948" target="_blank">arXiv:2404.02948</a></li>
+      <li id="ref-adalora"><strong>Zhang, Q., et al.</strong> &ldquo;AdaLoRA: Adaptive Budget Allocation for Parameter-Efficient Fine-Tuning.&rdquo; <em>ICLR 2023.</em> <a href="https://arxiv.org/abs/2303.10512" target="_blank">arXiv:2303.10512</a></li>
+      <li id="ref-dora"><strong>Liu, S., et al.</strong> &ldquo;DoRA: Weight-Decomposed Low-Rank Adaptation.&rdquo; <em>ICML 2024 Oral.</em> <a href="https://arxiv.org/abs/2402.09353" target="_blank">arXiv:2402.09353</a></li>
+      <li id="ref-aira"><strong>Li, Z., et al.</strong> &ldquo;AIRA: Activation-Informed Low-Rank Adaptation for Large Models.&rdquo; <em>ICCV 2025.</em> <a href="https://openaccess.thecvf.com/content/ICCV2025/papers/Li_AIRA" target="_blank">ICCV 2025</a></li>
+      <li id="ref-neuroada"><strong>Zhang, W., et al.</strong> &ldquo;NeuroAda: Neuron-level Efficient Adaptation Training.&rdquo; <em>EMNLP 2025.</em> <a href="https://arxiv.org/abs/2510.18940" target="_blank">arXiv:2510.18940</a></li>
+      <li id="ref-cloq"><strong>Bondarenko, Y., et al.</strong> &ldquo;CLoQ: Calibrated LoRA for Quantized LLMs.&rdquo; <em>2025.</em> <a href="https://arxiv.org/abs/2501.18475" target="_blank">arXiv:2501.18475</a></li>
+      <li id="ref-smoothquant"><strong>Xiao, G., et al.</strong> &ldquo;SmoothQuant: Accurate and Efficient Post-Training Quantization for Large Language Models.&rdquo; <em>ICML 2023.</em> <a href="https://arxiv.org/abs/2211.10438" target="_blank">arXiv:2211.10438</a></li>
+      <li id="ref-wanda"><strong>Sun, M., et al.</strong> &ldquo;A Simple and Effective Pruning Approach for Large Language Models.&rdquo; <em>ICLR 2024.</em> <a href="https://arxiv.org/abs/2306.11695" target="_blank">arXiv:2306.11695</a></li>
+      <li id="ref-omniquant"><strong>Shao, W., et al.</strong> &ldquo;OmniQuant: Omnidirectionally Calibrated Quantization for Large Language Models.&rdquo; <em>ICLR 2024.</em> <a href="https://arxiv.org/abs/2308.13137" target="_blank">arXiv:2308.13137</a></li>
+      <li id="ref-gemma4"><strong>Google DeepMind.</strong> &ldquo;Gemma 4 Technical Report.&rdquo; <em>2026.</em> <a href="https://ai.google.dev/gemma" target="_blank">ai.google.dev/gemma</a></li>
+      <li id="ref-qwen36"><strong>Qwen Team.</strong> &ldquo;Qwen3.6-35B-A3B: Sparse MoE with Gated DeltaNet.&rdquo; <em>2026.</em> <a href="https://huggingface.co/Qwen/Qwen3.6-35B-A3B" target="_blank">HuggingFace</a></li>
+      <li id="ref-evalplus"><strong>Liu, J., et al.</strong> &ldquo;Is Your Code Generated by ChatGPT Really Correct? Rigorous Evaluation of Code LLMs.&rdquo; <em>NeurIPS 2023.</em> <a href="https://arxiv.org/abs/2305.01210" target="_blank">arXiv:2305.01210</a> (EvalPlus / HumanEval+)</li>
+      <li id="ref-bfcl"><strong>Patil, S.G., et al.</strong> &ldquo;Gorilla: Large Language Model Connected with Massive APIs.&rdquo; <em>2023.</em> <a href="https://arxiv.org/abs/2305.15334" target="_blank">arXiv:2305.15334</a> (Berkeley Function Calling Leaderboard)</li>
+      <li id="ref-unsloth"><strong>Han, D. &amp; Han, M.</strong> &ldquo;Unsloth Dynamic 2.0: Per-Layer Adaptive Quantization.&rdquo; <em>2025.</em> <a href="https://unsloth.ai/blog/dynamic-4bit" target="_blank">unsloth.ai</a></li>
+    </ol>
   </div>
 </section>
 
