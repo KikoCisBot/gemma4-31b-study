@@ -68,11 +68,12 @@ table.heatmap th,table.heatmap td{padding:1px 3px;text-align:center;border:1px s
 <div class="nav">
   <div class="nav-inner">
     <a href="#phase-transition">Phase Transition</a>
-    <a href="#regions">Region Analysis</a>
-    <a href="#quantization-impact">Quantization Impact</a>
-    <a href="#cross-model">Cross-Model Benchmarks</a>
-    <a href="#ablation">Layer Ablation</a>
-    <a href="#methodology">Methodology</a>
+    <a href="#regions">Regions</a>
+    <a href="#quantization-impact">Quantization</a>
+    <a href="#cross-model">Benchmarks</a>
+    <a href="#dense-vs-moe">Dense vs MoE</a>
+    <a href="#ablation">Ablation</a>
+    <a href="#methodology">Methods</a>
     <a href="https://github.com/KikoCisBot/gemma4-31b-study" target="_blank">GitHub</a>
   </div>
 </div>
@@ -167,9 +168,77 @@ table.heatmap th,table.heatmap td{padding:1px 3px;text-align:center;border:1px s
   </div>
 </section>
 
-<!-- SECTION 5: ABLATION -->
+<!-- SECTION 5: DENSE vs MOE SPECIALIZATION -->
+<section id="dense-vs-moe">
+  <h2><span class="num">5</span>Two Architectures, Two Specialization Strategies</h2>
+  <p>Gemma 4 31B (dense) and Qwen3.6-35B-A3B (sparse MoE) solve the same problem &mdash; encoding multi-domain knowledge in finite parameters &mdash; with fundamentally different strategies. This has direct implications for quantization.</p>
+
+  <div class="card">
+    <h3>Dense specialization (Gemma 4): by dimension</h3>
+    <p>In a dense model, <strong>every neuron processes every token</strong>. Specialization happens at the <em>dimension level</em>: different tasks activate different subsets of the 5,376 hidden dimensions within the same weight matrices. Our analysis shows this specialization is not gradual &mdash; it undergoes a <strong>phase transition at layer 18</strong>, where Jaccard overlap collapses from 0.71 to 0.27.</p>
+    <p style="margin-top:8px">When you quantize uniformly, you corrupt all dimensions equally. But specialized dimensions (layers 18+) have <strong>no redundancy to absorb the error</strong> &mdash; they only fire for one task type. This is why IQ1_M (1.75 BPW) destroys code (which relies on specialized dimensions) while preserving tool-calling (which resolves in shared early layers).</p>
+  </div>
+
+  <div class="card">
+    <h3>Sparse specialization (Qwen3.6 MoE): by expert</h3>
+    <p>In a Mixture of Experts model, specialization is <strong>structural</strong>: 256 small FFN experts exist per layer, but only 8+1 activate per token. A learned router decides which experts fire.</p>
+    <table style="margin:12px 0">
+      <tr><th>Component</th><th>Total params</th><th>Active per token</th><th>Quantization sensitivity</th></tr>
+      <tr><td>Attention (Q/K/V/O)</td><td>~1.5B</td><td>~1.5B (always)</td><td style="color:var(--red)">HIGH &mdash; shared by all tokens</td></tr>
+      <tr><td>Router gates</td><td>~10M</td><td>~10M (always)</td><td style="color:var(--red)">CRITICAL &mdash; wrong routing = catastrophic</td></tr>
+      <tr><td>256 FFN experts</td><td>~33B</td><td>~1.0B (9 of 256)</td><td style="color:var(--green)">LOWER &mdash; each expert is isolated</td></tr>
+      <tr><td>Shared expert</td><td>~130M</td><td>~130M (always)</td><td style="color:var(--orange)">MEDIUM &mdash; base capacity for all tasks</td></tr>
+    </table>
+    <p>Each expert only processes tokens routed to it. A &ldquo;Python expert&rdquo; might fire for code tokens; a &ldquo;Spanish expert&rdquo; for natural language. When you quantize uniformly, each expert loses precision independently. But because experts are <strong>isolated</strong>, corrupting one doesn&rsquo;t propagate to others. The router sends the token elsewhere if the primary expert degrades &mdash; a form of built-in redundancy that dense models lack.</p>
+  </div>
+
+  <div class="card">
+    <h3>Why this matters for compression</h3>
+    <table>
+      <tr><th>Property</th><th>Dense (Gemma 4)</th><th>MoE (Qwen3.6)</th></tr>
+      <tr><td>Where knowledge lives</td><td>Specific <em>dimensions</em> within shared weight matrices</td><td>Specific <em>experts</em> (separate weight matrices)</td></tr>
+      <tr><td>Specialization boundary</td><td>Layer 18 (phase transition, Jaccard 0.71&rarr;0.27)</td><td>Router output (structural, at every layer)</td></tr>
+      <tr><td>Quantization failure mode</td><td>Dimension corruption in specialized layers &rarr; task collapse</td><td>Router corruption &rarr; wrong expert &rarr; cascade</td></tr>
+      <tr><td>Ideal quant strategy</td><td>Protect dimensions 18+ with higher BPW per layer</td><td>Protect router + attention; experts can be aggressive</td></tr>
+      <tr><td>Why tool-calling survives IQ1_M</td><td>Resolves in shared layers 0&ndash;15 (high redundancy)</td><td>Tool experts stay intact; router routes correctly</td></tr>
+      <tr><td>Empirical BFCL at ~11 GB</td><td>92.25% (IQ2_M)</td><td><strong>94.75%</strong> (IQ2_M)</td></tr>
+      <tr><td>Empirical HumanEval+ at ~11 GB</td><td><strong>88.41%</strong> (IQ2_M)</td><td>80.49% (IQ2_M)</td></tr>
+    </table>
+  </div>
+
+  <div class="finding">
+    <strong>Finding 4.</strong> Dense and MoE architectures encode domain knowledge through orthogonal mechanisms &mdash; dimensional selectivity vs expert routing &mdash; but both create <strong>isolated specialization that is vulnerable to uniform quantization</strong>. The optimal compression strategy differs: for dense models, protect the specialization boundary layers with higher bit budgets; for MoE, protect the router and shared expert, then quantize domain experts aggressively. Our BFCL results confirm this: Qwen3.6 MoE at 11 GB achieves 94.75% (expert isolation provides natural redundancy), while Gemma 4 dense at 10.4 GB achieves 88.41% HumanEval+ (specialized dimensions preserved at 2.84 BPW).
+  </div>
+
+  <div class="card">
+    <h3>Architectural diagram</h3>
+    <pre style="font-size:12px;color:var(--text2);line-height:1.5;overflow-x:auto">
+<span style="color:var(--accent)">Dense (Gemma 4 31B)</span>                     <span style="color:var(--green)">Sparse MoE (Qwen3.6-35B-A3B)</span>
+
+Token ─┬─ Attention (all dims) ──┐       Token ─┬─ Attention (all dims) ──┐
+       │                         │              │                         │
+       │  Layer 0-17: SHARED     │              │  Router ──► Expert 14 ──┤
+       │  (Jaccard 0.71+)        │              │         ──► Expert 67 ──┤
+       │                         │              │         ──► Expert 203 ─┤
+       │  ┌─ Layer 18: BOUNDARY  │              │         ──► Shared Exp ─┤
+       │  │  (Jaccard drops 62%) │              │  (8+1 of 256 per token) │
+       │  │                      │              │                         │
+       │  │  Layer 18-59:        │              │  Different tokens       │
+       │  │  SPECIALIZED dims    │              │  → different experts    │
+       │  │  (Jaccard 0.27)      │              │  → natural isolation    │
+       └──┴──────────────────────┘              └─────────────────────────┘
+
+<span style="color:var(--red)">Quantization risk:</span>               <span style="color:var(--red)">Quantization risk:</span>
+Dims 18+ corrupted = code dead     Router corrupted = all dead
+Dims 0-17 survive = BFCL lives     Experts corrupted = graceful degradation
+    </pre>
+  </div>
+</section>
+
+<!-- SECTION 6: ABLATION -->
 <section id="ablation">
-  <h2><span class="num">5</span>Single-Layer Ablation (Prior Work)</h2>
+  <h2><span class="num">6</span>Single-Layer Ablation (Prior Work)</h2>
+  <!-- renumbered: was 5, now 6 after Dense vs MoE insertion -->
   <p>From our earlier phase C study: zeroing each layer individually and measuring perplexity delta. Layers 27 and 29 are net-negative (removing them <em>improves</em> the model).</p>
   <div class="card">
     <h3>PPL delta % when each layer is zeroed</h3>
@@ -180,7 +249,7 @@ table.heatmap th,table.heatmap td{padding:1px 3px;text-align:center;border:1px s
 
 <!-- SECTION 6: METHODOLOGY -->
 <section id="methodology">
-  <h2><span class="num">6</span>Methodology</h2>
+  <h2><span class="num">7</span>Methodology</h2>
   <div class="card">
     <h3>Activation analysis</h3>
     <p>50 prompts across 9 categories (code, tool-calling, multilingual, math, creative writing), processed through Gemma 4 31B IT (4-bit MLX quantization on M4 Max). For each of 25 sampled layers, we record the per-dimension absolute delta |h<sub>out</sub> &minus; h<sub>in</sub>| averaged across sequence positions and prompts within each category. Top-200 dimensions per category per layer are compared via Jaccard index.</p>
