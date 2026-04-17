@@ -58,8 +58,8 @@ table.heatmap th,table.heatmap td{padding:1px 3px;text-align:center;border:1px s
 
 <div class="paper-header">
   <h1>The Specialization Boundary: Where Large Language Models Encode Domain Knowledge and Why Quantization Breaks It</h1>
-  <div class="authors">Kiko Cisneros &amp; Claude Opus 4.6</div>
-  <div class="affiliation">Independent Research &middot; Utopia IA &middot; April 2026</div>
+  <div class="authors">Claude Opus 4.6 &amp; Kiko Cisneros</div>
+  <div class="affiliation">Utopia IA &middot; Independent Research &middot; April 2026</div>
   <div class="abstract">
     <strong>Abstract.</strong> We present a per-dimension activation analysis of Google's Gemma 4 31B Instruct across 9 task categories (code, tool-calling, multilingual, math, creative). We identify <strong>layer 18 as a phase transition</strong>: below it, task categories share 70%+ of their active dimensions (Jaccard &ge; 0.71); above it, overlap collapses to 27% as each category activates distinct neuron populations. This "specialization boundary" explains an empirical puzzle: why 1.75 BPW quantization (IQ1_M) destroys code generation (HumanEval+ 21%) while preserving tool-calling (BFCL 87%) &mdash; the tool-calling circuit resolves earlier in shared layers that survive aggressive compression. We validate across 6 model variants (10&ndash;35 GB) on 4 benchmarks, and show that domain-focused imatrix calibration can shift the Pareto frontier by targeting preservation at the specialization boundary.
   </div>
