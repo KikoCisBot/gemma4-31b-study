@@ -51,9 +51,29 @@ Google officially reports only **LiveCodeBench v6 = 80%** and **Tau2 = 76.9%** f
 - **Layer pruning without recovery fine-tuning is dominated** by dynamic quantization: the 58-layer Otter-v3 IQ3_XS (12.1 GB) loses 6 F1 points to the 60-layer IQ2_M (10.17 GB).
 - **Layers 27 and 29 are net-negative** on perplexity: single-layer ablation REDUCES PPL by 74% and 71% respectively. Block ablation {27, 29}: PPL drops from 496 to 117 (-76%).
 
+## Cross-model benchmark comparison (first public eval of Qwen3.6 + Gemma 4 on HumanEval+/MBPP+/BFCL)
+
+| Model | Size | Active | HumanEval+ | MBPP+ | BFCL v3 | NL2Bash F1 |
+|-------|------|--------|------------|-------|---------|------------|
+| **Gemma 4 31B IQ2_M (ours)** | **10.4 GB** | 31B | **88.41%** | **82.01%** | 92.25% | **84.71%** |
+| Qwen3.6 Q8_0 (≈f16) | 35.2 GB | 3B | 81.10% | 82.80% | **95.25%** | — |
+| Qwen3.6 Unsloth UD-IQ2_M | 11.0 GB | 3B | 82.32% | 79.37% | 94.25% | — |
+| **Qwen3.6 IQ2_M (ours)** | **11.1 GB** | 3B | 80.49% | 78.31% | **94.75%** | 81.63% |
+| **Gemma 4 E4B Q8_0** | **7.8 GB** | 4.5B | 73.78% | 73.28% | 93.75% | 79.75% |
+| Gemma 4 31B IQ1_M | 7.4 GB | 31B | 21.34% | 40.50% | 86.75% | 53.89% |
+
+### Recommendation by use case
+
+| Use case | Best model | Size |
+|----------|-----------|------|
+| Code generation | Gemma 4 31B IQ2_M | 10.4 GB |
+| Agentic / tool-calling | Qwen3.6 IQ2_M | 11.1 GB |
+| Sub-8 GB all-rounder | Gemma 4 E4B Q8_0 | 7.8 GB |
+
 ## Published models
 
-- ⭐ 🤗 **[gemma-4-31b-it-IQ2_M-GGUF](https://huggingface.co/KikoCis/gemma-4-31b-it-IQ2_M-GGUF)** — recommended, 10.17 GB, F1 84.71%, BLEU-4 22.39
+- ⭐ 🤗 **[gemma-4-31b-it-IQ2_M-GGUF](https://huggingface.co/KikoCis/gemma-4-31b-it-IQ2_M-GGUF)** — best for code, 10.17 GB, HE+ 88.41%
+- ⭐ 🤗 **[Qwen3.6-35B-A3B-IQ2_M-GGUF](https://huggingface.co/KikoCis/Qwen3.6-35B-A3B-IQ2_M-GGUF)** — best for agentic, 11.1 GB, BFCL 94.75%
 - 🤗 [gemma-4-31b-it-IQ3_XS-GGUF](https://huggingface.co/KikoCis/gemma-4-31b-it-IQ3_XS-GGUF) — 13.1 GB, F1 84.76%, ties f16
 - 🤗 [gemma-4-31b-otter-v3-GGUF](https://huggingface.co/KikoCis/gemma-4-31b-otter-v3-GGUF) — research artifact (58-layer pruned, no fine-tuning)
 - 📊 [gemma4-31b-layer-study dataset](https://huggingface.co/datasets/KikoCis/gemma4-31b-layer-study) — raw data + scripts + visualization
