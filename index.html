@@ -131,6 +131,11 @@ table.heatmap th,table.heatmap td{padding:1px 3px;text-align:center;border:1px s
 <!-- SECTION 3: QUANTIZATION IMPACT -->
 <section id="quantization-impact">
   <h2><span class="num">3</span>Why Quantization Breaks Code but Preserves Tool-Calling</h2>
+
+  <div class="warning" style="background:rgba(255,215,0,0.06);border-color:rgba(255,215,0,0.3)">
+    <strong>Note on BFCL scores.</strong> All BFCL scores in this study use our internal simplified evaluation (single-function-call subset with custom prompt and scoring), NOT the official <a href="https://gorilla.cs.berkeley.edu/leaderboard.html">Berkeley Function Calling Leaderboard</a> methodology. Our scores are useful for <em>relative comparison between our models</em> but are <strong>not directly comparable</strong> to published leaderboard numbers. Official BFCL evaluation is in progress.
+  </div>
+
   <p>At 1.75 BPW (IQ1_M), each weight is represented by ~1.75 bits. Standard post-training quantization methods <a href="#ref-gptq">[1]</a> distribute rounding error uniformly across all dimensions. Activation-aware methods like AWQ <a href="#ref-awq">[2]</a> and SmoothQuant <a href="#ref-smoothquant">[15]</a> rescale to reduce outlier sensitivity, and importance-matrix calibration (as used in llama.cpp) approximates the GPTQ Hessian. But the <em>impact</em> of quantization error depends on whether the corrupted dimensions are shared (low impact &mdash; redundancy absorbs it) or specialized (high impact &mdash; no fallback).</p>
 
   <table>
