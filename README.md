@@ -70,6 +70,24 @@ Google officially reports only **LiveCodeBench v6 = 80%** and **Tau2 = 76.9%** f
 | Agentic / tool-calling | Qwen3.6 IQ2_M | 11.1 GB |
 | Sub-8 GB all-rounder | Gemma 4 E4B Q8_0 | 7.8 GB |
 
+## Real-World Agent Test — The Benchmark Trap
+
+**Critical finding (April 2026): benchmark scores do not predict agent capability.**
+
+We tested models on an autonomous Docker-based bioinformatics challenge (download P53_HUMAN from UniProt, parse JSON, extract secondary structure + cancer mutations, generate HTML report). Same container, same tools, same prompt.
+
+| Model | Size | BFCL | **Agent Score** | Failure Mode |
+|-------|------|------|:---:|------|
+| Claude Sonnet 4.6 | Cloud | — | **10/10** | None |
+| E4B Base Q3_K_M | 3.8 GB | 80.25% | **6/10** | Completed, data incomplete |
+| 31B IQ2_M (ours) | 10.4 GB | 92.25% | **2/10** | Empty "N/A" results |
+| **E4B FT Q4_K_M** | **5.1 GB** | **95.50%** | **0/10** | "Hello World" + infinite loop |
+| **E4B FT Q3_K_M** | **4.5 GB** | **93.75%** | **0/10** | `apt-get install python3` ×14 |
+
+**Key lesson:** The fine-tuned E4B models (93-95% BFCL) are catastrophically worse than the base model (80% BFCL, 6/10 agent) on real tasks. Fine-tuning for BFCL taught the model to format JSON perfectly while destroying error recovery, strategy adaptation, and anti-repetition capabilities.
+
+**The fine-tuned E4B models have been withdrawn. Use base Gemma 4 E4B instead.**
+
 ## Published models
 
 - ⭐ 🤗 **[gemma-4-31b-it-IQ2_M-GGUF](https://huggingface.co/KikoCis/gemma-4-31b-it-IQ2_M-GGUF)** — best for code, 10.17 GB, HE+ 88.41%

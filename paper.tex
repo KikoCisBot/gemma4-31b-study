@@ -203,9 +203,44 @@ MoE provides natural quantization resilience: when an expert degrades, the route
 
 \paragraph{Broader impact.} This work enables practitioners to make informed decisions about which quantization to use for their specific workload. The finding that tool-calling survives ultra-aggressive compression has practical implications for deploying agentic systems on edge devices.
 
+\section{Real-World Agent Validation}
+
+Static benchmarks (BFCL, HumanEval+, NL2Bash) evaluate narrow capabilities in isolation. To test whether quantized models function as autonomous agents, we designed a Docker-based real-world challenge: given a protein accession ID, the model must download data from UniProt, parse JSON, extract secondary structure and cancer mutations, generate a Python analysis script, execute it, and produce an HTML report --- all autonomously using bash, file I/O, and iterative reasoning.
+
+\begin{table}[H]
+\centering
+\caption{Real-world agent test: Bioinformatics challenge (P53\_HUMAN). Same Docker container, same tools, same prompt. Score: automated rubric with anti-pattern penalties.}
+\label{tab:realworld}
+\begin{tabular}{lccccl}
+\toprule
+\textbf{Model} & \textbf{Size} & \textbf{BFCL} & \textbf{Agent Score} & \textbf{Turns} & \textbf{Failure Mode} \\
+\midrule
+Claude Sonnet 4.6 & Cloud & --- & \textbf{10/10} & 5 & None \\
+E4B Base Q3\_K\_M & 3.8\,GB & 80.25\% & 6/10 & 6 & Data parsing incomplete \\
+31B IQ2\_M (ours) & 10.4\,GB & 92.25\% & 2/10 & 5 & Empty ``N/A'' results \\
+\textbf{E4B Fine-tuned Q3\_K\_M} & \textbf{4.5\,GB} & \textbf{93.75\%} & \textbf{0/10} & \textbf{17} & \textbf{Infinite loop} \\
+E4B Fine-tuned Q4\_K\_M & 5.1\,GB & 95.50\% & 0/10 & 63 & ``Hello World'' + loop \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Three critical findings emerge:
+
+\begin{enumerate}[leftmargin=*,itemsep=2pt]
+\item \textbf{Benchmark scores do not predict agent capability.} The fine-tuned E4B model scores 95.50\% on BFCL --- higher than the 31B model (92.25\%) --- yet scores 0/10 on the real-world task. The fine-tuning that maximized BFCL accuracy destroyed general reasoning: the model entered an infinite loop repeating \texttt{apt-get install python3} without reading the error message indicating the package was already installed.
+
+\item \textbf{Fine-tuning can degrade base capability.} The unfine-tuned E4B Base (80.25\% BFCL, 6/10 agent) outperforms every fine-tuned variant (93--95\% BFCL, 0/10 agent). The base model correctly used \texttt{python3}, wrote a working analysis script, and completed all steps. Our BFCL-optimized fine-tuning taught the model to format tool calls perfectly while eliminating its ability to reason about errors, adapt strategies, or detect repetition.
+
+\item \textbf{Quantization alone does not explain the failure.} The 31B IQ2\_M (10.4\,GB) --- which matches f16 on NL2Bash --- scores only 2/10 on the agent task, failing to parse the UniProt JSON despite completing the pipeline. Even at 10.4\,GB, the model lacks the reasoning depth to extract structured data from complex API responses.
+\end{enumerate}
+
+These results demonstrate that \emph{the specialization boundary framework predicts benchmark performance but not real-world agency}. Tool-calling circuits (shared layers 0--15) handle JSON formatting; but autonomous agent behavior requires sustained multi-step reasoning across dozens of turns --- a capability that spans the entire network and is destroyed by narrow fine-tuning.
+
 \section{Conclusion}
 
-We identified a sharp specialization boundary at layer~18 in Gemma~4 31B, where per-dimension Jaccard overlap between task categories drops from 0.71 to 0.27. This phase transition explains the asymmetric degradation pattern under aggressive quantization and reveals that dense and MoE architectures encode domain knowledge through fundamentally different mechanisms. Our cross-model benchmarks --- the first public HumanEval+/MBPP+/BFCL evaluation of Gemma~4 and Qwen3.6 quantizations --- provide practical guidance for deployment: Gemma~4 IQ2\_M (10.4\,GB) for code, Qwen3.6 IQ2\_M (11.1\,GB) for agentic tasks, and Gemma~4 E4B (7.8\,GB) as a sub-8\,GB all-rounder.
+We identified a sharp specialization boundary at layer~18 in Gemma~4 31B, where per-dimension Jaccard overlap between task categories drops from 0.71 to 0.27. This phase transition explains the asymmetric degradation pattern under aggressive quantization and reveals that dense and MoE architectures encode domain knowledge through fundamentally different mechanisms. Our cross-model benchmarks --- the first public HumanEval+/MBPP+/BFCL evaluation of Gemma~4 and Qwen3.6 quantizations --- provide practical guidance for deployment.
+
+\textbf{Critical caveat:} Our real-world agent validation reveals that benchmark scores are necessary but not sufficient. A model achieving 95\% on BFCL can score 0\% on autonomous tasks if fine-tuning narrows its capabilities. We recommend that any fine-tuned model be validated on open-ended agentic tasks before deployment --- standard benchmarks alone are insufficient.
 
 All code, data, models, and interactive visualizations are publicly available at \url{https://github.com/KikoCisBot/gemma4-31b-study}.
 

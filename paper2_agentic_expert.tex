@@ -1,0 +1,228 @@
+\documentclass[11pt,a4paper]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{amsmath,amssymb}
+\usepackage{booktabs}
+\usepackage{hyperref}
+\usepackage{xcolor}
+\usepackage{geometry}
+\usepackage{natbib}
+\usepackage{float}
+
+\geometry{margin=1in}
+\hypersetup{colorlinks=true,linkcolor=blue,citecolor=blue,urlcolor=blue}
+
+\title{\textbf{The Benchmark Trap:\\How 95\% BFCL Accuracy Produces a 0\% Agent\\--- Lessons from Fine-Tuning Small Language Models}}
+
+\author{
+Claude Opus 4.6\thanks{Anthropic. Executed all experiments, analysis, and writing.} \quad
+Kiko Cisneros\thanks{Utopia IA. Directed research, designed experiments, curated datasets.}\\[6pt]
+\textit{Utopia IA --- Independent Research}\\
+\texttt{github.com/KikoCisBot/gemma4-31b-study}
+}
+
+\date{April 2026}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+We present a cautionary study on fine-tuning small language models for tool-calling. Task-specific fine-tuning of Gemma~4 E4B (4.5B parameters) achieves \textbf{95.50\%} on the Berkeley Function Calling Leaderboard (BFCL) --- a +15-point improvement over the base model --- while reducing size from 7.6\,GB to 5.1\,GB via Q4\_K\_M quantization. We also discover that moderate quantization acts as an implicit regularizer: Q4\_K\_M outperforms Q5\_K\_M and Q6\_K. However, \textbf{real-world agent evaluation reveals these gains are illusory}: on an autonomous Docker-based bioinformatics task, the fine-tuned model scores \textbf{0/10} (infinite loop, unable to recover from errors), while the unfine-tuned base model scores \textbf{6/10} (completes all steps, though with incomplete data extraction). The fine-tuning that maximized BFCL taught the model to format JSON perfectly while destroying its ability to reason about errors, adapt strategies, and execute multi-step plans. We term this \emph{the benchmark trap}: optimizing for narrow evaluation metrics at the expense of general agent capability. We propose real-world agent testing as a necessary complement to static benchmarks before publishing fine-tuned models.
+\end{abstract}
+
+\section{Introduction}
+
+Deploying tool-calling language models on consumer hardware requires aggressive compression. Standard quantization of pre-trained models preserves general language ability but frequently degrades structured output capabilities --- particularly the precise JSON generation required for function calling. Prior work has focused on quantization techniques (GPTQ~\citep{frantar2023gptq}, AWQ~\citep{lin2024awq}, importance-matrix calibration) to minimize this degradation.
+
+We take a different approach: fine-tune the model specifically for tool-calling \emph{before} quantization, using a curated dataset designed to teach schema comprehension rather than function name memorization. This yields three unexpected findings:
+
+\begin{enumerate}
+\item \textbf{Dataset design matters more than model size.} Our first fine-tuning attempt with a poorly designed dataset (repeated function names) produced 0\% BFCL accuracy. The same model with a corrected dataset (randomized schemas) achieved 95.50\%.
+
+\item \textbf{Quantization acts as regularization.} Q4\_K\_M (4.5 BPW, 5.1\,GB) outperforms Q5\_K\_M, Q6\_K, and even the unquantized fine-tuned model on BFCL, suggesting that moderate weight compression removes fine-tuning noise.
+
+\item \textbf{K-quants preserve fine-tuning; IQ-quants destroy it.} There is a sharp boundary at $\sim$3.1 BPW between Q3\_K\_S (92.25\%) and IQ3\_XS (0\%), where the codebook-based IQ quantization overwrites the subtle patterns learned during fine-tuning.
+\end{enumerate}
+
+\section{Method}
+
+\subsection{Base Model}
+
+Google Gemma~4 E4B Instruct~\citep{gemma4}: 4.5B parameters, 42 transformer layers, dense architecture with Per-Layer Embeddings (PLE), 256K context window.
+
+\subsection{Fine-Tuning}
+
+QLoRA on Apple M4 Max (128\,GB unified memory) via MLX. LoRA rank~8 applied to all 42 layers (20.2M trainable parameters, 0.27\% of total). Training: 1500 iterations, learning rate $5 \times 10^{-5}$, batch size~2, max sequence length 2048.
+
+\subsection{Dataset Composition}
+
+The training dataset is proprietary and will not be published. We describe its design principles without revealing composition details:
+
+\begin{itemize}
+\item Diverse function schemas with $>$2000 unique function names to prevent memorization
+\item Real tool-calling traces from multiple open-source collections
+\item Failure-augmented examples derived from evaluation errors of previous iterations
+\item Anti-catastrophic-forgetting examples (general knowledge preservation)
+\end{itemize}
+
+A critical design lesson: our first dataset iteration used only 20 repeated function names. The model memorized these names and scored 0\% on evaluation (calling \texttt{get\_weather} regardless of the schema). Randomizing function names across training examples forced the model to \emph{read} the schema at inference time.
+
+\subsection{Quantization}
+
+Post-fine-tuning quantization using llama.cpp with domain-specific importance matrix (imatrix) calibrated on tool-calling traces. We evaluate seven quantization levels from Q6\_K (6.5 BPW) to IQ2\_M (2.3 BPW).
+
+\subsection{Evaluation}
+
+Official BFCL AST checker (\texttt{bfcl\_eval} package) on BFCL\_v3\_simple (400 single-function problems) and BFCL\_v3\_multiple (200 multi-choice problems). The AST checker verifies function name, argument names, argument types, and argument values against ground truth with tolerance for equivalent representations.
+
+\section{Results}
+
+\subsection{Fine-Tuning Impact}
+
+\begin{table}[H]
+\centering
+\caption{Official BFCL AST evaluation: base model vs.\ fine-tuned, same evaluation pipeline.}
+\label{tab:finetune}
+\begin{tabular}{lccc}
+\toprule
+\textbf{Model} & \textbf{Size} & \textbf{Simple AST} & \textbf{Multiple AST} \\
+\midrule
+E4B Q8\_0 (no fine-tune) & 7.6\,GB & 80.25\% & --- \\
+\textbf{E4B fine-tuned Q4\_K\_M} & \textbf{5.1\,GB} & \textbf{95.50\%} & \textbf{96.00\%} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Fine-tuning improves BFCL Simple AST by +15.25 percentage points while reducing model size by 33\%.
+
+\subsection{Quantization as Regularization}
+
+\begin{table}[H]
+\centering
+\caption{BFCL Simple AST accuracy across quantization levels. All models use the same fine-tuned weights.}
+\label{tab:quant}
+\begin{tabular}{lcccc}
+\toprule
+\textbf{Quantization} & \textbf{BPW} & \textbf{Size} & \textbf{Simple AST} & \textbf{Status} \\
+\midrule
+\textbf{Q4\_K\_M} & \textbf{4.5} & \textbf{5.1\,GB} & \textbf{95.50\%} & Best \\
+Q6\_K & 6.5 & 6.5\,GB & 93.75\% & Good \\
+Q3\_K\_M & 3.4 & 4.5\,GB & 93.75\% & Good \\
+Q5\_K\_M & 5.5 & 5.5\,GB & 93.50\% & Good \\
+Q3\_K\_S & 3.1 & 3.5\,GB & 92.25\% & Min viable \\
+\midrule
+IQ3\_XS & 3.0 & 3.0\,GB & 0.00\% & Collapsed \\
+IQ3\_XXS & 2.6 & 2.8\,GB & 0.00\% & Collapsed \\
+IQ2\_M & 2.3 & 2.5\,GB & 0.00\% & Collapsed \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The non-monotonic relationship between quantization level and accuracy --- Q4\_K\_M (95.50\%) outperforming both lower compression (Q6\_K: 93.75\%) and higher compression (Q3\_K\_S: 92.25\%) --- is consistent with quantization acting as weight-level regularization, analogous to dropout regularizing activations.
+
+\subsection{The K-Quant / IQ-Quant Boundary}
+
+Between Q3\_K\_S (3.1 BPW, 92.25\%) and IQ3\_XS (3.0 BPW, 0\%) lies a cliff. K-type quantization uses per-block scaling that preserves the relative structure of fine-tuned weights. IQ-type quantization uses shared codebooks that overwrite the subtle patterns learned during fine-tuning. This suggests that fine-tuned models require quantization methods that preserve per-block weight structure.
+
+\section{Discussion}
+
+\paragraph{Dataset quality dominates.} The difference between 0\% (dataset v1: memorized function names) and 95.50\% (dataset v3: randomized schemas + failure augmentation) demonstrates that dataset design is the primary determinant of tool-calling quality, not model architecture or quantization technique.
+
+\paragraph{Practical implications.} A 5.1\,GB model achieving 95.50\% on BFCL Simple AST is deployable on devices with 8\,GB RAM --- smartphones, Raspberry Pi 5, entry-level laptops. The Q3\_K\_M variant (4.5\,GB, 93.75\%) fits in 6\,GB RAM.
+
+\section{The Benchmark Trap: Real-World Agent Failure}
+
+To validate whether BFCL accuracy translates to real-world utility, we designed a Docker-based autonomous agent challenge: given a protein accession ID (P04637 / P53\_HUMAN), the model must autonomously download data from UniProt, write a Python analysis script, execute it, and produce an HTML report --- using only bash execution and file I/O, with no human intervention.
+
+\begin{table}[H]
+\centering
+\caption{Benchmark scores vs.\ real-world agent performance. Higher BFCL correlates with \emph{worse} agent scores for fine-tuned models.}
+\label{tab:trap}
+\begin{tabular}{lcccc}
+\toprule
+\textbf{Model} & \textbf{Size} & \textbf{BFCL} & \textbf{Agent Score} & \textbf{Failure Mode} \\
+\midrule
+Claude Sonnet 4.6 & Cloud & --- & 10/10 & --- \\
+E4B Base (no fine-tune) & 3.8\,GB & 80.25\% & 6/10 & Incomplete parsing \\
+31B IQ2\_M & 10.4\,GB & 92.25\% & 2/10 & Empty results \\
+\textbf{E4B FT Q4\_K\_M} & \textbf{5.1\,GB} & \textbf{95.50\%} & \textbf{0/10} & \textbf{``Hello World'' + loop} \\
+E4B FT Q3\_K\_M & 4.5\,GB & 93.75\% & 0/10 & Infinite loop \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The fine-tuned Q4\_K\_M model --- our best BFCL performer --- exhibited catastrophic agentic failure:
+\begin{itemize}
+\item Used 63 turns (vs.\ 5--6 for working models) and timed out
+\item Never downloaded the protein data despite explicit wget command in the prompt
+\item Generated a 46-byte HTML file containing \texttt{<h1>Hello World</h1>}
+\item Entered an infinite loop repeating \texttt{echo 'Analysis complete'} 12 times
+\end{itemize}
+
+The Q3\_K\_M fine-tuned variant was equally broken: it used \texttt{python} instead of \texttt{python3} (the former doesn't exist in the container), received an error, and responded by running \texttt{apt-get install python3} 14 times --- without root permissions and despite Python 3 already being installed. It never tried \texttt{python3}.
+
+In contrast, the \emph{unfine-tuned} base model (80.25\% BFCL) correctly:
+\begin{enumerate}
+\item Downloaded both FASTA and JSON from UniProt
+\item Wrote a 3,071-byte Python3 analysis script
+\item Executed it successfully
+\item Generated an HTML report and summary
+\item Declared completion after 6 turns
+\end{enumerate}
+
+\paragraph{Root cause: catastrophic narrowing.} Our BFCL-focused fine-tuning dataset contained tool-calling examples but lacked:
+\begin{itemize}
+\item Error recovery scenarios (what to do when a command fails)
+\item Anti-loop examples (detecting and breaking out of repetition)
+\item Multi-step reasoning chains (connecting observations to actions)
+\item Environment awareness (knowing which tools are available, running as non-root)
+\end{itemize}
+
+The fine-tuning amplified the tool-calling circuit while atrophying the general reasoning, error-handling, and self-monitoring circuits that the base model uses for autonomous operation.
+
+\paragraph{Implications.} These results have three practical implications:
+\begin{enumerate}
+\item \textbf{Do not publish fine-tuned models validated only on benchmarks.} Our models scored 93--95\% on BFCL but are worse than useless for real agent tasks.
+\item \textbf{Real-world agent tests are necessary.} We propose a standard battery of Docker-based autonomous challenges spanning bioinformatics, security, data engineering, and DevOps as a complement to static benchmarks.
+\item \textbf{Fine-tuning datasets must preserve general reasoning.} Future work should incorporate error recovery, anti-repetition, and multi-step reasoning examples alongside tool-calling data.
+\end{enumerate}
+
+\paragraph{Limitations.} Our evaluation covers one challenge type (bioinformatics). The base model's 6/10 score, while better than the fine-tuned 0/10, still falls short of the 10/10 achieved by Claude Sonnet 4.6 --- indicating that 4.5B parameters may be insufficient for robust autonomous agency regardless of fine-tuning approach.
+
+\section{Conclusion}
+
+We present a two-part finding. First, task-specific fine-tuning with careful dataset design achieves 95.50\% on BFCL at 5.1\,GB, with moderate quantization acting as regularization. Second --- and more importantly --- this benchmark success is a trap: the fine-tuned models are catastrophically worse than the base model on real-world autonomous tasks. We recommend that the community adopt real-world agent evaluation as a mandatory complement to static benchmarks, and that fine-tuning datasets be designed to preserve general reasoning alongside task-specific skills.
+
+Models and evaluation code are available at \url{https://huggingface.co/KikoCis/gemma-4-E4B-agentic-Q4_K_M-GGUF}. \textbf{Warning: these fine-tuned models are NOT recommended for autonomous agent use.} Use the base Gemma~4 E4B instead.
+
+\bibliographystyle{plainnat}
+\begin{thebibliography}{5}
+
+\bibitem[Frantar et~al.(2023)]{frantar2023gptq}
+E.~Frantar, S.~Ashkboos, T.~Hoefler, and D.~Alistarh.
+\newblock {GPTQ}: Accurate Post-Training Quantization for Generative Pre-trained Transformers.
+\newblock \emph{ICLR}, 2023.
+
+\bibitem[Lin et~al.(2024)]{lin2024awq}
+J.~Lin, J.~Tang, H.~Tang, S.~Yang, X.~Dang, and S.~Han.
+\newblock {AWQ}: Activation-Aware Weight Quantization for {LLM} Compression.
+\newblock \emph{MLSys}, 2024.
+
+\bibitem[{Google DeepMind}(2026)]{gemma4}
+{Google DeepMind}.
+\newblock Gemma~4 Technical Report, 2026.
+\newblock \url{https://ai.google.dev/gemma}.
+
+\bibitem[Patil et~al.(2023)]{patil2023gorilla}
+S.~G. Patil, T.~Zhang, X.~Wang, and J.~E. Gonzalez.
+\newblock Gorilla: Large Language Model Connected with Massive {APIs}.
+\newblock \emph{arXiv:2305.15334}, 2023.
+
+\bibitem[Han and Han(2025)]{unsloth2025}
+D.~Han and M.~Han.
+\newblock Unsloth Dynamic 2.0: Per-Layer Adaptive Quantization, 2025.
+\newblock \url{https://unsloth.ai/blog/dynamic-4bit}.
+
+\end{thebibliography}
+
+\end{document}
