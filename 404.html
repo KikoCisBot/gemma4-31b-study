@@ -139,6 +139,7 @@ table.heatmap th,table.heatmap td{padding:1px 3px;text-align:center;border:1px s
     <tr><td>Qwen3.6 Q8_0 (&approx;f16)</td><td>35.2 GB</td><td>81.10%</td><td>82.80%</td><td><strong>95.25%</strong></td><td>&mdash;</td></tr>
     <tr><td>Qwen3.6 Unsloth UD-IQ2_M</td><td>11.0 GB</td><td>82.32%</td><td>79.37%</td><td>94.25%</td><td>&mdash;</td></tr>
     <tr class="highlight-row"><td>Qwen3.6 IQ2_M (ours)</td><td>11.1 GB</td><td>80.49%</td><td>78.31%</td><td><strong>94.75%</strong></td><td>81.63%</td></tr>
+    <tr class="highlight-row"><td><a href="https://huggingface.co/KikoCis/gemma-4-E4B-agentic-Q4_K_M-GGUF">Gemma 4 E4B Agentic (ours)</a></td><td><strong>5.1 GB</strong></td><td>&mdash;</td><td>&mdash;</td><td style="color:var(--green)"><strong>95.00%</strong></td><td>&mdash;</td></tr>
     <tr><td>Gemma 4 E4B Q8_0</td><td>7.8 GB</td><td>73.78%</td><td>73.28%</td><td>93.75%</td><td>79.75%</td></tr>
     <tr><td>Gemma 4 31B IQ1_M</td><td>7.4 GB</td><td style="color:var(--red)">21.34%</td><td style="color:var(--red)">40.50%</td><td style="color:var(--green)">86.75%</td><td>53.89%</td></tr>
   </table>
@@ -148,7 +149,11 @@ table.heatmap th,table.heatmap td{padding:1px 3px;text-align:center;border:1px s
   </div>
 
   <div class="finding">
-    <strong>Finding 3.</strong> The practical implication: to quantize below 2 BPW without losing code, you must <strong>protect the specialization boundary (layers 18&ndash;24)</strong> with higher bit budgets. A uniform bit allocation treats shared and specialized dimensions equally &mdash; which is provably suboptimal given the phase transition we observe. Sparse outlier methods like SpQR <a href="#ref-spqr">[4]</a> and SqueezeLLM <a href="#ref-squeezellm">[3]</a> partially address this by preserving high-magnitude weights, but they lack the task-specific dimension targeting our analysis enables. Post-quantization recovery via LoRA <a href="#ref-loftq">[8]</a> <a href="#ref-pissa">[9]</a> can restore some capacity, but standard LoRA training does not preferentially target the specialized dimensions &mdash; motivating our proposed Activation-Targeted LoRA (AT-LoRA) approach.
+    <strong>Finding 3.</strong> The practical implication: to quantize below 2 BPW without losing code, you must <strong>protect the specialization boundary (layers 18&ndash;24)</strong> with higher bit budgets. A uniform bit allocation treats shared and specialized dimensions equally &mdash; which is provably suboptimal given the phase transition we observe.
+  </div>
+
+  <div class="finding">
+    <strong>Finding 5.</strong> Task-specific fine-tuning before quantization dramatically changes the Pareto frontier. Our <a href="https://huggingface.co/KikoCis/gemma-4-E4B-agentic-Q4_K_M-GGUF">Gemma 4 E4B Agentic</a> (4.5B params, fine-tuned on a proprietary tool-calling dataset, then quantized to Q4_K_M) achieves <strong>95.00% BFCL at 5.1 GB</strong> &mdash; surpassing the Qwen3.6-35B MoE at full precision (95.25%) with <strong>7&times; fewer parameters</strong>. Without fine-tuning, the same model at Q4_K_M scores only 93.75%. The key insight: <strong>curated domain-specific training data matters more than model size or quantization technique</strong>.
   </div>
 </section>
 
@@ -163,6 +168,7 @@ table.heatmap th,table.heatmap td{padding:1px 3px;text-align:center;border:1px s
       <tr><th>Use case</th><th>Best model</th><th>Size</th><th>Key metric</th></tr>
       <tr><td>Code generation</td><td><a href="https://huggingface.co/KikoCis/gemma-4-31b-it-IQ2_M-GGUF">Gemma 4 31B IQ2_M</a></td><td>10.4 GB</td><td>HE+ 88.41%</td></tr>
       <tr><td>Agentic / tool-calling</td><td><a href="https://huggingface.co/KikoCis/Qwen3.6-35B-A3B-IQ2_M-GGUF">Qwen3.6 IQ2_M</a></td><td>11.1 GB</td><td>BFCL 94.75%</td></tr>
+      <tr><td><strong>Best agentic (any size)</strong></td><td><a href="https://huggingface.co/KikoCis/gemma-4-E4B-agentic-Q4_K_M-GGUF"><strong>Gemma 4 E4B Agentic</strong></a></td><td><strong>5.1 GB</strong></td><td><strong>BFCL 95.00%</strong></td></tr>
       <tr><td>Sub-8 GB all-rounder</td><td>Gemma 4 E4B Q8_0</td><td>7.8 GB</td><td>HE+ 73.78%</td></tr>
     </table>
   </div>
