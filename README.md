@@ -110,3 +110,26 @@ All measurements run on Apple M4 Max 128GB with full Metal GPU offload.
 ## License
 
 Apache 2.0 (matching base Gemma 4 license).
+
+## SWE-bench Lite (30 problems, simplified patch matching)
+
+| Model | Accuracy | Time | Cost | Solved |
+|-------|:--------:|------|------|--------|
+| Claude Opus 4.6 | 10% (3/30) | 43 min | ~$15 | django (3) |
+| **Gemma4 31B v6** | **10% (3/30)** | 105 min | **$0** | astropy (1) + django (2) |
+
+Neither model was trained on coding tasks — included as reference baseline.
+
+## Complete Model Comparison
+
+| Model | Size | RAB Score | SWE-bench | BFCL | Cost | Speed |
+|-------|------|:---------:|:---------:|:----:|------|-------|
+| Claude Opus 4.6 | Cloud | 28/40 | 10% | — | $4.72/run | ~8 min |
+| **Gemma4 31B v6** | **16 GB** | **27/40** | **10%** | TBD | **$0** | ~40 min |
+| Gemma4 31B Base q4 | 16 GB | 9/10* | — | 92% | $0 | ~5 min |
+| Gemma4 E4B v5 | 4 GB | 7/10* | — | TBD | $0 | ~1 min |
+| Gemma4 E4B Base | 3.8 GB | 6/10* | — | 80% | $0 | ~1 min |
+| Gemma4 31B IQ2_M | 10 GB | 2/10* | — | 92% | $0 | ~3 min |
+| **Gemma4 E4B v3** | **4.5 GB** | **0/10*** | — | **95%** | $0 | ~1 min |
+
+\* CH1 only
