@@ -105,7 +105,7 @@ We tested models on an autonomous Docker-based bioinformatics challenge (downloa
 
 Benchmark: NL2Bash 50-example subset from the official Stanford/Tellina test split. Each question runs as an isolated `llama-cli` subprocess with `--reasoning off`, `--max-tokens 200`, `--temp 0.1`, `--ctx-size 4096`. Scoring via NLTK BLEU + character-level F1 + exact match.
 
-All measurements run on Apple M4 Max 128GB with full Metal GPU offload.
+All measurements run on consumer hardware with GPU acceleration.
 
 ## License
 
