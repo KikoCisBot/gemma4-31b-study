@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RAB — Real-World Agent Benchmark | Utopia IA</title>
+<style>
+:root{--bg:#0a0a0f;--card:#12121a;--border:#1e1e2e;--text:#c9d1d9;--muted:#6e7681;--accent:#58a6ff;--green:#3fb950;--red:#f85149;--orange:#d29922;--purple:#bc8cff;--gold:#f5c542}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:var(--bg);color:var(--text);font-family:'Inter',-apple-system,system-ui,sans-serif;line-height:1.6}
+.container{max-width:1200px;margin:0 auto;padding:0 24px}
+
+header{background:linear-gradient(135deg,#0d1117 0%,#161b22 100%);border-bottom:1px solid var(--border);padding:48px 0}
+header h1{font-size:2.2rem;color:#fff;margin-bottom:8px}
+header .tagline{color:var(--muted);font-size:1.1rem}
+header .badges{display:flex;gap:12px;margin-top:16px;flex-wrap:wrap}
+.badge{background:var(--card);border:1px solid var(--border);border-radius:20px;padding:4px 14px;font-size:0.8rem;color:var(--accent)}
+
+.section{padding:48px 0}
+.section h2{font-size:1.5rem;color:#fff;margin-bottom:24px;display:flex;align-items:center;gap:10px}
+.section h2 .icon{font-size:1.3rem}
+
+.leaderboard{width:100%;border-collapse:collapse;background:var(--card);border-radius:12px;overflow:hidden;border:1px solid var(--border)}
+.leaderboard th{background:#161b22;color:var(--muted);text-transform:uppercase;font-size:0.72rem;letter-spacing:0.05em;padding:14px 16px;text-align:left;border-bottom:1px solid var(--border)}
+.leaderboard td{padding:14px 16px;border-bottom:1px solid var(--border);font-size:0.9rem}
+.leaderboard tr:hover{background:#161b22}
+.leaderboard .rank{font-weight:700;color:var(--gold);font-size:1.1rem;width:40px}
+.leaderboard .model-name{font-weight:600;color:#fff}
+.leaderboard .model-size{color:var(--muted);font-size:0.8rem}
+.leaderboard .score{font-weight:700;font-size:1rem}
+.leaderboard .score-high{color:var(--green)}
+.leaderboard .score-mid{color:var(--orange)}
+.leaderboard .score-low{color:var(--red)}
+.leaderboard .bar{height:8px;border-radius:4px;background:#1e1e2e;position:relative;min-width:80px}
+.leaderboard .bar-fill{height:100%;border-radius:4px;position:absolute;left:0;top:0}
+
+.challenges{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:16px;margin-top:16px}
+.ch-card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:20px}
+.ch-card h3{color:#fff;font-size:1rem;margin-bottom:8px}
+.ch-card .ch-num{color:var(--accent);font-size:0.8rem;margin-bottom:4px}
+.ch-card p{color:var(--muted);font-size:0.85rem}
+
+.insight{background:#1c2128;border-left:3px solid var(--accent);padding:16px 20px;border-radius:0 8px 8px 0;margin:24px 0}
+.insight h4{color:var(--accent);margin-bottom:6px;font-size:0.9rem}
+.insight p{color:var(--muted);font-size:0.85rem}
+
+.methodology{display:grid;grid-template-columns:1fr 1fr;gap:24px}
+.method-card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:24px}
+.method-card h3{color:#fff;font-size:1rem;margin-bottom:8px}
+.method-card p{color:var(--muted);font-size:0.85rem}
+.method-card code{background:#1e1e2e;padding:2px 6px;border-radius:4px;font-size:0.8rem;color:var(--accent)}
+
+footer{border-top:1px solid var(--border);padding:32px 0;text-align:center;color:var(--muted);font-size:0.8rem}
+footer a{color:var(--accent);text-decoration:none}
+
+@media(max-width:768px){
+  .methodology{grid-template-columns:1fr}
+  .leaderboard{font-size:0.8rem}
+  .leaderboard th,.leaderboard td{padding:10px 8px}
+}
+</style>
+</head>
+<body>
+<header>
+<div class="container">
+<h1>RAB — Real-World Agent Benchmark</h1>
+<p class="tagline">Measuring what benchmarks can't: does your model actually work as an autonomous agent?</p>
+<div class="badges">
+<span class="badge">11 Challenges</span>
+<span class="badge">Docker-isolated</span>
+<span class="badge">Deep validation scoring</span>
+<span class="badge">Open source</span>
+</div>
+</div>
+</header>
+
+<div class="container">
+
+<section class="section">
+<h2><span class="icon">🏆</span> Leaderboard</h2>
+<p style="color:var(--muted);margin-bottom:16px">Scored with v2.1 (deep validation — verifies actual data, not just keywords). CH1-4 evaluated, CH5-11 coming soon.</p>
+
+<table class="leaderboard">
+<thead>
+<tr>
+<th></th>
+<th>Model</th>
+<th>Size</th>
+<th>CH1<br>Bio</th>
+<th>CH2<br>Sec</th>
+<th>CH3<br>Data</th>
+<th>CH4<br>DevOps</th>
+<th>Total<br>/40</th>
+<th>Visual</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="rank">1</td>
+<td><span class="model-name">Claude Opus 4.6</span><br><span class="model-size">Cloud API</span></td>
+<td>—</td>
+<td>5</td>
+<td class="score score-high">9</td>
+<td class="score score-mid">6</td>
+<td class="score score-mid">6</td>
+<td class="score score-high">26</td>
+<td><div class="bar"><div class="bar-fill" style="width:65%;background:var(--green)"></div></div></td>
+</tr>
+<tr>
+<td class="rank">2</td>
+<td><span class="model-name">Gemma4 31B v6</span><br><span class="model-size">16 GB · fine-tuned</span></td>
+<td>16 GB</td>
+<td>4</td>
+<td>1</td>
+<td>4</td>
+<td class="score score-high">10</td>
+<td class="score score-mid">19</td>
+<td><div class="bar"><div class="bar-fill" style="width:47.5%;background:var(--orange)"></div></div></td>
+</tr>
+<tr>
+<td class="rank">3</td>
+<td><span class="model-name">Gemma4 31B v8</span><br><span class="model-size">16 GB · fine-tuned</span></td>
+<td>16 GB</td>
+<td>3</td>
+<td class="score score-mid">7</td>
+<td>3</td>
+<td>0</td>
+<td class="score score-low">13</td>
+<td><div class="bar"><div class="bar-fill" style="width:32.5%;background:var(--orange)"></div></div></td>
+</tr>
+<tr>
+<td class="rank">4</td>
+<td><span class="model-name">Gemma4 31B Base</span><br><span class="model-size">16 GB · no fine-tune</span></td>
+<td>16 GB</td>
+<td>3</td>
+<td>3</td>
+<td>1</td>
+<td>3</td>
+<td class="score score-low">10</td>
+<td><div class="bar"><div class="bar-fill" style="width:25%;background:var(--red)"></div></div></td>
+</tr>
+<tr>
+<td class="rank">5</td>
+<td><span class="model-name">Gemma4 31B Base Q8</span><br><span class="model-size">33 GB · no fine-tune</span></td>
+<td>33 GB</td>
+<td>1</td>
+<td>3</td>
+<td>1</td>
+<td>0</td>
+<td class="score score-low">5</td>
+<td><div class="bar"><div class="bar-fill" style="width:12.5%;background:var(--red)"></div></div></td>
+</tr>
+<tr>
+<td class="rank">6</td>
+<td><span class="model-name">Gemma4 E4B Base</span><br><span class="model-size">3.8 GB · no fine-tune</span></td>
+<td>3.8 GB</td>
+<td>1</td>
+<td colspan="3" style="color:var(--muted)">CH1 only</td>
+<td class="score score-low">1*</td>
+<td><div class="bar"><div class="bar-fill" style="width:2.5%;background:var(--red)"></div></div></td>
+</tr>
+<tr>
+<td class="rank">—</td>
+<td><span class="model-name">Gemma4 E4B v3</span><br><span class="model-size">4.5 GB · BFCL 95%</span></td>
+<td>4.5 GB</td>
+<td class="score score-low">0</td>
+<td colspan="3" style="color:var(--muted)">Loop ×14</td>
+<td class="score score-low">0*</td>
+<td><div class="bar"><div class="bar-fill" style="width:0%;background:var(--red)"></div></div></td>
+</tr>
+<tr>
+<td class="rank">—</td>
+<td><span class="model-name">Qwen3.5 0.8B</span><br><span class="model-size">0.8 GB</span></td>
+<td>0.8 GB</td>
+<td class="score score-low">0</td>
+<td colspan="3" style="color:var(--muted)">Loop ×27</td>
+<td class="score score-low">0*</td>
+<td><div class="bar"><div class="bar-fill" style="width:0%;background:var(--red)"></div></div></td>
+</tr>
+</tbody>
+</table>
+<p style="color:var(--muted);font-size:0.75rem;margin-top:8px">* CH1 only — not comparable to full 4-challenge scores. Opus scores averaged from 2 runs. Results update as new models are tested.</p>
+</section>
+
+<section class="section">
+<h2><span class="icon">🔬</span> Key Finding: The Benchmark Trap</h2>
+<div class="insight">
+<h4>95% BFCL = 0% Agent</h4>
+<p>A fine-tuned model scoring 95.50% on the Berkeley Function Calling Leaderboard scored 0/10 on our autonomous agent test — entering an infinite loop of repeated commands. The unfine-tuned base model (80% BFCL) scored higher. Standard benchmarks measure format compliance, not reasoning ability.</p>
+</div>
+<div class="insight">
+<h4>Bigger ≠ Better for Agents</h4>
+<p>The 33 GB Q8 model scored 5/40 while the 16 GB Q4 scored 10/40. Higher precision doesn't help if the model generates verbose responses that the agent framework can't parse efficiently.</p>
+</div>
+</section>
+
+<section class="section">
+<h2><span class="icon">🎯</span> Challenges</h2>
+<div class="challenges">
+<div class="ch-card">
+<div class="ch-num">CH1 · Bioinformatics</div>
+<h3>Protein Analysis</h3>
+<p>Download P53 from UniProt, parse JSON, extract secondary structure + cancer mutations, generate HTML report.</p>
+</div>
+<div class="ch-card">
+<div class="ch-num">CH2 · Security CTF</div>
+<h3>DVWA Exploitation</h3>
+<p>Deploy DVWA, exploit SQL injection + XSS + command injection, document with proof.</p>
+</div>
+<div class="ch-card">
+<div class="ch-num">CH3 · Data Engineering</div>
+<h3>NYC Taxi Pipeline</h3>
+<p>Download 3M-row dataset, clean, compute analytics, generate interactive Chart.js dashboard.</p>
+</div>
+<div class="ch-card">
+<div class="ch-num">CH4 · DevOps</div>
+<h3>Monitoring Stack</h3>
+<p>Flask + Nginx + Prometheus + health check. All configs verified and services running.</p>
+</div>
+<div class="ch-card">
+<div class="ch-num">CH5 · Web Scraping</div>
+<h3>Package Analysis</h3>
+<p>Fetch and parse PyPI API data, generate structured report. <em>Coming soon</em></p>
+</div>
+<div class="ch-card">
+<div class="ch-num">CH6 · API Integration</div>
+<h3>Space Dashboard</h3>
+<p>Combine ISS position + crew data + facts into single dashboard. <em>Coming soon</em></p>
+</div>
+<div class="ch-card">
+<div class="ch-num">CH7 · File Processing</div>
+<h3>Data Pipeline</h3>
+<p>Generate CSV, convert formats, filter, compute stats. <em>Coming soon</em></p>
+</div>
+<div class="ch-card">
+<div class="ch-num">CH8 · System Diagnostics</div>
+<h3>Health Report</h3>
+<p>Full system audit with traffic-light status. <em>Coming soon</em></p>
+</div>
+<div class="ch-card">
+<div class="ch-num">CH9 · Database</div>
+<h3>SQLite Analytics</h3>
+<p>Create DB, insert data, run queries, generate report. <em>Coming soon</em></p>
+</div>
+<div class="ch-card">
+<div class="ch-num">CH10 · Automation</div>
+<h3>Monitoring Script</h3>
+<p>Write and run a system monitor with alerting. <em>Coming soon</em></p>
+</div>
+<div class="ch-card">
+<div class="ch-num">CH11 · Documentation</div>
+<h3>Code + Tests + Docs</h3>
+<p>Write code, test it, generate accurate API docs. <em>Coming soon</em></p>
+</div>
+</div>
+</section>
+
+<section class="section">
+<h2><span class="icon">⚙️</span> Methodology</h2>
+<div class="methodology">
+<div class="method-card">
+<h3>Execution</h3>
+<p>Each model runs autonomously inside a Docker container (Ubuntu 24.04) with bash, file I/O, and web search tools. No human intervention. 10-minute timeout per challenge.</p>
+</div>
+<div class="method-card">
+<h3>Scoring v2.1</h3>
+<p>Deep validation: checks actual data values (not keywords), verifies configs are structurally valid, penalizes anti-patterns (loops, error blindness). <code>score_challenge.py</code> is open source.</p>
+</div>
+<div class="method-card">
+<h3>Reproducibility</h3>
+<p>All scripts, Docker configs, and scorers available at <a href="https://huggingface.co/datasets/KikoCis/real-world-agent-benchmark" style="color:var(--accent)">HuggingFace</a>. Run it on your own models.</p>
+</div>
+<div class="method-card">
+<h3>Variance</h3>
+<p>LLM outputs are stochastic. We run multiple evaluations where possible. Opus stabilized at 26/40 across 2 runs. Local models run once due to cost constraints.</p>
+</div>
+</div>
+</section>
+
+</div>
+
+<footer>
+<div class="container">
+<p>RAB — Real-World Agent Benchmark · <a href="https://huggingface.co/datasets/KikoCis/real-world-agent-benchmark">Dataset</a> · <a href="https://github.com/KikoCisBot/gemma4-31b-study">Study</a> · <a href="https://huggingface.co/KikoCis/gemma-4-31b-agent-v6-MLX">Model</a></p>
+<p style="margin-top:8px">Utopia IA · 2026</p>
+</div>
+</footer>
+</body>
+</html>
